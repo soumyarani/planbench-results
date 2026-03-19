@@ -73,6 +73,15 @@
 <div class="container">
 
 <h1>Planning Fundamentals: From Search to Subgoal Interactions</h1>
+
+<div style="background:white;border-radius:10px;padding:16px 20px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,0.15);display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="fundamentals.html" style="padding:6px 16px;background:#2c3e50;color:white;border-radius:15px;text-decoration:none;font-size:0.85em;font-weight:600">Planning Fundamentals</a>
+<a href="index.html#summary-section" style="padding:6px 16px;background:#e74c3c;color:white;border-radius:15px;text-decoration:none;font-size:0.85em;font-weight:600">PlanBench Results</a>
+<a href="index.html#transitive-section" style="padding:6px 16px;background:#e67e22;color:white;border-radius:15px;text-decoration:none;font-size:0.85em;font-weight:600">Transitive Dependencies</a>
+<a href="index.html#cross-benchmark" style="padding:6px 16px;background:#9b59b6;color:white;border-radius:15px;text-decoration:none;font-size:0.85em;font-weight:600">Cross-Benchmark Comparison</a>
+</div>
+
 <p>A ground-up explanation of how we solve planning problems and measure subgoal interactions in PlanBench.</p>
 
 <!-- ============================================================ -->
@@ -517,13 +526,13 @@ This is the <strong>Sussman Anomaly</strong>. The two goals <code>on(A,B)</code>
 <!-- ============================================================ -->
 
 <div class="card">
-<h2 style="margin-top:0">6. Interaction Graph Topologies: Current vs. What We Need</h2>
+<h2 style="margin-top:0">6. Interaction Graph Topologies</h2>
 
-<p>The <strong>shape</strong> of the interaction graph determines how hard the planning problem is. PlanBench only produces one shape (linear chains). For a better benchmark, we need diverse shapes:</p>
+<p>The <strong>shape</strong> of the interaction graph determines how hard the planning problem is. Different topologies create different densities of destructive interactions:</p>
 
 <div class="step-grid">
 <div>
-<h4>Linear Chain (all of PlanBench)</h4>
+<h4>Linear Chain (PlanBench)</h4>
 <div class="graph-container">
 <svg width="280" height="130" viewBox="0 0 280 130">
     <circle cx="40" cy="55" r="22" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
@@ -541,7 +550,7 @@ This is the <strong>Sussman Anomaly</strong>. The two goals <code>on(A,B)</code>
 </div>
 
 <div>
-<h4>Clique — every pair conflicts</h4>
+<h4>Clique</h4>
 <div class="graph-container">
 <svg width="280" height="130" viewBox="0 0 280 130">
     <circle cx="60" cy="75" r="22" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
@@ -560,7 +569,7 @@ This is the <strong>Sussman Anomaly</strong>. The two goals <code>on(A,B)</code>
 </div>
 
 <div>
-<h4>Star — shared resource at center</h4>
+<h4>Star</h4>
 <div class="graph-container">
 <svg width="280" height="130" viewBox="0 0 280 130">
     <circle cx="140" cy="55" r="24" fill="#fde8e8" stroke="#c0392b" stroke-width="3"/>
@@ -583,7 +592,7 @@ This is the <strong>Sussman Anomaly</strong>. The two goals <code>on(A,B)</code>
 </div>
 
 <div>
-<h4>Bipartite — cross-group conflicts</h4>
+<h4>Bipartite</h4>
 <div class="graph-container">
 <svg width="280" height="130" viewBox="0 0 280 130">
     <rect x="10" y="15" width="90" height="100" rx="8" fill="#fdf2f2" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4,3"/>
@@ -609,7 +618,85 @@ This is the <strong>Sussman Anomaly</strong>. The two goals <code>on(A,B)</code>
 </div>
 
 <div class="key-point">
-<strong>PlanBench's fundamental limitation:</strong> Blocksworld stacking only produces <strong>linear chains</strong>. As chains get longer, destructive density drops (formula: <code>2/(N+1)</code>). To achieve 90% destructive density, we need non-linear structures like cliques, stars, or bipartite graphs. These require moving beyond Blocksworld to domains where goals can conflict in richer ways.
+<strong>Destructive density depends on topology.</strong> Linear chains have density <code>2/(N+1)</code>, dropping toward 0% as goals grow. Cliques achieve 100%. Stars and bipartite graphs fall in between. Different topologies require fundamentally different planning strategies.
+</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- SECTION 7: LANDMARK ORDERINGS & TRANSITIVE DEPENDENCIES -->
+<!-- ============================================================ -->
+
+<div class="card">
+<h2 style="margin-top:0">7. Landmark Orderings &amp; Transitive Dependencies</h2>
+
+<p>Direct pairwise analysis (section 4-5) checks: "does achieving G<sub>i</sub> alone make G<sub>j</sub> alone harder?" But this <strong>misses transitive dependencies</strong> — goals that share no blocks can still require strict ordering through intermediate goals.</p>
+
+<div class="concept-box">
+<h4>What is a Landmark?</h4>
+<p>A <strong>landmark</strong> is a fact that must become true at some point in <em>every</em> valid plan. For example, if your goal is <code>on(A,B)</code>, then <code>holding(A)</code> is a landmark — there's no way to get A on B without first holding A.</p>
+<p>Goal facts are always landmarks (they must be true at the end). But there are also intermediate landmarks — facts that must be achieved along the way.</p>
+</div>
+
+<div class="concept-box">
+<h4>What is a Necessary Ordering?</h4>
+<p>A <strong>necessary ordering</strong> L<sub>1</sub> &rarr; L<sub>2</sub> means: L<sub>1</sub> must be achieved <em>before</em> L<sub>2</sub> in every valid plan. This is provably correct — it's not a heuristic guess, it's a mathematical fact about the planning domain.</p>
+<p>These orderings come from the formal method by <strong>Hoffmann, Porteous &amp; Sebastia (2004)</strong>.</p>
+</div>
+
+<div class="analogy-box">
+Building a house: you must pour the foundation before framing the walls, and frame the walls before installing the roof. "Foundation &rarr; walls" and "walls &rarr; roof" are necessary orderings. Even though the foundation and roof don't directly interact (different materials, different workers), there's a <strong>transitive</strong> ordering: foundation &rarr; roof.
+</div>
+
+<h3>Why Transitive Dependencies Matter</h3>
+
+<p>Consider goals: <code>on(A,C)</code>, <code>on(C,B)</code>, <code>on(B,E)</code> — building tower A/C/B/E.</p>
+
+<table>
+<tr><th>Pair</th><th>Share Blocks?</th><th>Direct Interaction?</th><th>Transitive Ordering?</th></tr>
+<tr><td>on(C,B) &harr; on(B,E)</td><td>Yes (block B)</td><td><span style="color:#e74c3c;font-weight:bold">Yes (+2 cost)</span></td><td>on(B,E) must come first</td></tr>
+<tr><td>on(A,C) &harr; on(C,B)</td><td>Yes (block C)</td><td><span style="color:#e74c3c;font-weight:bold">Yes (+2 cost)</span></td><td>on(C,B) must come first</td></tr>
+<tr style="background:#fef9e7"><td>on(A,C) &harr; on(B,E)</td><td><strong>No</strong></td><td><strong>No</strong> (cost stays same)</td><td><span style="color:#e67e22;font-weight:bold">Yes! on(B,E) must come first</span></td></tr>
+</table>
+
+<p>Direct pairwise analysis says on(A,C) and on(B,E) are <strong>independent</strong>. But the landmark ordering chain reveals they're <strong>transitively constrained</strong>:</p>
+
+<div class="graph-container">
+<svg width="550" height="100" viewBox="0 0 550 100">
+    <defs>
+        <marker id="arr-r" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#e74c3c"/></marker>
+        <marker id="arr-o" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 L10 5 L0 10z" fill="#e67e22"/></marker>
+    </defs>
+    <circle cx="80" cy="50" r="35" fill="#fff" stroke="#333" stroke-width="2"/>
+    <text x="80" y="54" text-anchor="middle" font-size="12" font-weight="bold">on(B,E)</text>
+    <circle cx="270" cy="50" r="35" fill="#fff" stroke="#333" stroke-width="2"/>
+    <text x="270" y="54" text-anchor="middle" font-size="12" font-weight="bold">on(C,B)</text>
+    <circle cx="460" cy="50" r="35" fill="#fff" stroke="#333" stroke-width="2"/>
+    <text x="460" y="54" text-anchor="middle" font-size="12" font-weight="bold">on(A,C)</text>
+    <!-- Direct edges -->
+    <line x1="115" y1="45" x2="233" y2="45" stroke="#e74c3c" stroke-width="2.5" marker-end="url(#arr-r)"/>
+    <text x="175" y="38" text-anchor="middle" font-size="10" fill="#e74c3c">direct (+2)</text>
+    <line x1="305" y1="45" x2="423" y2="45" stroke="#e74c3c" stroke-width="2.5" marker-end="url(#arr-r)"/>
+    <text x="365" y="38" text-anchor="middle" font-size="10" fill="#e74c3c">direct (+2)</text>
+    <!-- Transitive edge -->
+    <path d="M115 60 Q270 110 425 60" fill="none" stroke="#e67e22" stroke-width="2" stroke-dasharray="6,3" marker-end="url(#arr-o)"/>
+    <text x="270" y="100" text-anchor="middle" font-size="10" fill="#e67e22" font-weight="bold">transitive (shares no blocks!)</text>
+</svg>
+</div>
+
+<h3>The Wrong-Order Penalty</h3>
+
+<p>For this 3-goal tower, the penalty for wrong ordering is <strong>3.67x</strong>:</p>
+
+<table>
+<tr><th>Ordering</th><th>on(B,E)</th><th>on(C,B)</th><th>on(A,C)</th><th>Total</th></tr>
+<tr style="background:#eafaf1"><td><strong>Optimal (bottom-up)</strong></td><td>2</td><td>2</td><td>2</td><td><strong>6 steps</strong></td></tr>
+<tr style="background:#fdf2f2"><td><strong>Worst (top-down)</strong></td><td>2</td><td>6</td><td>14</td><td><strong>22 steps (3.67x!)</strong></td></tr>
+</table>
+
+<p>Each wrong-order goal must undo all previously stacked blocks, insert the new one, then re-stack everything. The cost grows <strong>quadratically</strong> with chain length.</p>
+
+<div class="key-point">
+Including transitive dependencies, PlanBench 4-block's constrained density rises from 32.7% (direct only) to <strong>82.5%</strong> (with transitive closure). <a href="index.html#transitive-section" style="color:#e67e22;font-weight:600">See full analysis for all 195 multi-goal instances &rarr;</a>
 </div>
 </div>
 
