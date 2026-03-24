@@ -1,0 +1,216 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>CooperBench — 5-Category Subgoal Interaction Analysis</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5;line-height:1.6;color:#1a1a2e}
+.container{max-width:1200px;margin:0 auto}
+h1{border-bottom:3px solid #3498db;padding-bottom:8px}
+h2{color:#2c3e50;margin-top:30px}
+h3{color:#34495e}
+.card{background:white;border-radius:10px;padding:20px;margin:15px 0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+table{border-collapse:collapse;width:100%;margin:10px 0}
+th{background:#2c3e50;color:white;padding:8px 12px;text-align:left;font-size:.85em}
+td{padding:6px 12px;border-bottom:1px solid #eee;font-size:.85em}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78em;font-weight:600;color:white}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:15px 0}
+.stat-box{background:white;border-radius:10px;padding:14px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.stat-value{font-size:1.8em;font-weight:700}
+.stat-label{font-size:.78em;color:#666}
+.concept{border-left:4px solid #3498db;padding:12px 16px;margin:12px 0;background:#f8f9fa;border-radius:0 6px 6px 0}
+.example{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin:12px 0}
+.example-title{font-weight:700;color:#2c3e50;margin-bottom:8px}
+.code{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:.85em;background:#1e2a3a;color:#a8d8ea;padding:10px 14px;border-radius:6px;margin:6px 0;overflow-x:auto;white-space:pre}
+.arrow{color:#e74c3c;font-weight:bold}
+.highlight{background:#fef9e7;padding:2px 6px;border-radius:3px}
+nav{background:white;border-radius:10px;padding:12px 20px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.15);display:flex;gap:10px;flex-wrap:wrap}
+nav a{padding:6px 16px;border-radius:15px;text-decoration:none;font-size:.85em;font-weight:600;color:white}
+</style></head><body><div class="container">
+
+<nav>
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="index.html" style="background:#e74c3c">PlanBench Results</a>
+<a href="cooperbench.html" style="background:#27ae60">CooperBench Results</a>
+<a href="fundamentals.html" style="background:#2c3e50">Planning Fundamentals</a>
+<a href="taxonomy.html" style="background:#9b59b6">Taxonomy</a>
+</nav>
+
+<h1>CooperBench &mdash; 5-Category Subgoal Interaction Analysis</h1>
+<p><strong>652 task pairs</strong> from 12 open-source repositories (Python, TypeScript, Go, Rust). Two AI agents independently implement different features on a shared codebase. We analyze whether their patches conflict and map to the PlanBench planning taxonomy.</p>
+
+<div class="concept" style="border-left-color:#e67e22">
+<h4>What are the subgoals?</h4>
+<p>Each CooperBench task assigns 2 agents to implement different features. Each agent produces a <code>feature.patch</code> &mdash; a unified diff against the base repository. <strong>Each agent&rsquo;s patch = one subgoal.</strong> We analyze how these subgoals interact.</p>
+</div>
+
+<h2>Methodology</h2>
+
+<div class="card">
+<h3>Step 1: Extract Per-Agent Effects</h3>
+<p>Parse each agent&rsquo;s <code>feature.patch</code> using <strong>PatchSymbolExtractor</strong> (regex-based extraction from diff hunks):</p>
+<ul>
+<li><strong>Write set</strong>: Symbols the agent ADDS/MODIFIES &mdash; function defs, class defs, method defs, imports, variable assignments, body modifications</li>
+<li><strong>Read set</strong>: Symbols the agent REFERENCES &mdash; function calls, name references, imports</li>
+</ul>
+<p>All symbols qualified by file path (<code>file::symbol</code>) to avoid false positives across files.</p>
+
+<h3>Step 2: Compute Pairwise Interactions</h3>
+<table style="max-width:700px">
+<tr><th>Set</th><th>Definition</th><th>PlanBench Analog</th></tr>
+<tr><td><code>write_write</code></td><td>Symbols BOTH agents write</td><td>Shared resource (like shared block)</td></tr>
+<tr><td><code>write_read_a&rarr;b</code></td><td>Symbols A writes that B reads</td><td>A&rsquo;s effects &cap; B&rsquo;s preconditions</td></tr>
+<tr><td><code>write_read_b&rarr;a</code></td><td>Symbols B writes that A reads</td><td>B&rsquo;s effects &cap; A&rsquo;s preconditions</td></tr>
+</table>
+
+<h3>Step 3: Simulate Patch Ordering</h3>
+<p>For pairs with symbol conflicts, we simulate both orderings by checking <strong>hunk overlap</strong>: do both patches modify the same line ranges? If so, the second patch cannot apply after the first (context mismatch).</p>
+<ul>
+<li>Both orderings clean &rarr; conflict is at symbol level only, may be resolvable</li>
+<li>One ordering clean &rarr; <span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> (serializable)</li>
+<li>Neither ordering clean &rarr; <span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> (needs semantic merge)</li>
+</ul>
+
+<h3>Step 4: Filter Idempotent Operations</h3>
+<p>Shared imports (<code>typing.Optional</code>, <code>from X import Y</code>) and <code>__init__.py</code> re-exports are <strong>idempotent</strong> &mdash; adding the same import twice has no effect. These are classified as <span class="badge" style="background:#27ae60">SYNERGY</span> (mutual benefit), not conflicts.</p>
+</div>
+
+<h2>Results</h2>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">652</div><div class="stat-label">Total Pairs</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#3498db">452</div><div class="stat-label">Independent</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#27ae60">40</div><div class="stat-label">Synergy</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">3</div><div class="stat-label">Direct Destructive</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">157</div><div class="stat-label">Non-Serializable</div></div>
+</div>
+
+<div class="card">
+<h3>Pair-Level Distribution</h3>
+<table style="max-width:800px">
+<tr><th>Category</th><th>Count</th><th>%</th><th>Meaning</th></tr>
+<tr><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>452</td><td>69.3%</td><td>No symbol overlap &mdash; agents write different symbols even in the same file</td></tr>
+<tr><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>40</td><td>6.1%</td><td>Shared imports/registry re-exports &mdash; idempotent, mutually beneficial</td></tr>
+<tr><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>3</td><td>0.5%</td><td>Write-write on same symbol, but one patch ordering applies cleanly</td></tr>
+<tr><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>157</td><td>24.1%</td><td>Both patches modify same line ranges &mdash; neither ordering works, needs semantic merge</td></tr>
+</table>
+
+<h3>Cross-Reference with CooperBench Ground Truth</h3>
+<table style="max-width:800px">
+<tr><th>Gold Label</th><th>Total</th><th>INDEP</th><th>SYNERGY</th><th>DIR_DESTR</th><th>NON_SER</th></tr>
+<tr><td><strong>CONFLICT</strong></td><td>499</td><td>312 (62.5%)</td><td>30 (6.0%)</td><td>3 (0.6%)</td><td>154 (30.9%)</td></tr>
+<tr><td><strong>CLEAN</strong></td><td>153</td><td>140 (91.5%)</td><td>10 (6.5%)</td><td>0</td><td>3 (2.0%)</td></tr>
+</table>
+</div>
+
+<h2>Concrete Examples</h2>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#3498db">INDEPENDENT</span> &mdash; outlines/task1371: feature1 vs feature2</div>
+<p><strong>Feature A:</strong> Add Custom Filters Support to Prompt Decorator<br>
+<strong>Feature B:</strong> Add Global Filter Registry for Template Reusability</p>
+<p>Both modify <code>outlines/prompts.py</code> but write completely different symbols:</p>
+<div class="code">Agent A writes: _template_from_file, _template_from_str, create_jinja_env, from_file, from_str
+Agent B writes: register_filter, unregister_filter
+
+Write-Write: NONE    A&rarr;B reads: NONE    B&rarr;A reads: NONE</div>
+<p><strong>PlanBench analog:</strong> <code>on(A,B) + on(C,D)</code> with no shared blocks. delta(A&rarr;B) = 0, delta(B&rarr;A) = 0.</p>
+<p><em>Note: CooperBench labels this CONFLICT because git sees overlapping lines, but at the symbol level there is no semantic interference.</em></p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#27ae60">SYNERGY</span> &mdash; dirty_equals/task43: feature1 vs feature2</div>
+<p><strong>Feature A:</strong> Add IsIP validator<br>
+<strong>Feature B:</strong> Add IsMac validator</p>
+<p>Both add new validator classes and both add the same re-exports to <code>__init__.py</code>:</p>
+<div class="code">Agent A adds to __init__.py: from ._other import FunctionCheck, IsIP, IsJson, IsUUID
+Agent B adds to __init__.py: from ._other import FunctionCheck, IsJson, IsMac, IsUUID
+
+Shared imports: FunctionCheck, IsJson, IsUUID (both agents re-export the same existing symbols)</div>
+<p><strong>PlanBench analog:</strong> Mutual synergy. Both agents assert the same imports &mdash; <strong>idempotent</strong>. Achieving A makes B&rsquo;s import free (already done). delta(A&rarr;B) &lt; 0, delta(B&rarr;A) &lt; 0.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> &mdash; outlines/task1371: feature1 vs feature3</div>
+<p><strong>Feature A:</strong> Add Custom Filters Support &mdash; rewrites <code>prompt()</code> to accept <code>filters</code> parameter<br>
+<strong>Feature B:</strong> Add Conditional Filter Loading &mdash; rewrites <code>prompt()</code> to accept <code>conditional_filters</code> parameter</p>
+<div class="code">Agent A rewrites: def prompt(fn=None, filters={})     # A's signature
+Agent B rewrites: def prompt(fn=None, conditional_filters=None)  # B's signature
+
+Write-Write: [prompts.py::prompt, prompts.py::_template_from_file, ...]
+A writes, B reads: [prompts.py::prompt]
+B writes, A reads: [prompts.py::prompt]
+
+Simulation:
+  A&rarr;B: A modifies lines 40-85, B also modifies lines 32-85 &rarr; CONFLICT (context mismatch)
+  B&rarr;A: B modifies lines 32-85, A also modifies lines 40-85 &rarr; CONFLICT (context mismatch)
+  NEITHER ordering works.</div>
+<p><strong>PlanBench analog:</strong> Sussman Anomaly. Both agents rewrite <code>prompt()</code> with incompatible signatures. Like <code>on(A,B) + on(B,A)</code> &mdash; mutual destruction. Requires <strong>semantic merge</strong>: combine A&rsquo;s <code>filters</code> parameter with B&rsquo;s <code>conditional_filters</code> into one function signature.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> &mdash; dspy/task8394: feature1 vs feature2</div>
+<p><strong>Feature A:</strong> Add <code>cache.bypass()</code> context manager &mdash; modifies <code>Cache.get()</code> to check bypass flag<br>
+<strong>Feature B:</strong> Add cache namespaces &mdash; modifies <code>Cache.get()</code> to prefix namespace</p>
+<div class="code">Agent A adds to Cache.get():
+    if _cache_bypass_context.get():
+        return None  # skip cache read
+
+Agent B adds to Cache.get():
+    namespace = self._namespace_var.get()
+    if namespace:
+        key = f"{ns_hash}:{key}"  # prefix key with namespace
+
+Both modify Cache.get() body (lines 97-104) with different logic.
+Neither ordering applies &mdash; both patches expect the ORIGINAL get() body as context.</div>
+<p><strong>PlanBench analog:</strong> Both agents modify the same function body for different purposes. Like two goals both needing <code>clear(B)</code> and both consuming it. The merged solution must include BOTH bypass checking AND namespace prefixing in <code>get()</code>.</p>
+</div>
+
+<h2>Key Findings</h2>
+
+<div class="card" style="border-left:4px solid #e74c3c">
+<ol>
+<li><strong>69.3% of pairs are INDEPENDENT at symbol level</strong> even though CooperBench labels 76.5% as CONFLICT. Most &ldquo;conflicts&rdquo; are textual (overlapping lines) not semantic (different symbols).</li>
+<li><strong>24.1% are genuinely NON_SERIALIZABLE</strong> &mdash; both patches modify the same line ranges, so neither ordering of <code>git apply</code> works. These require semantic merge (understanding what both agents intended and combining them).</li>
+<li><strong>6.1% are SYNERGY</strong> &mdash; shared imports and registry re-exports that are idempotent (adding the same import twice is harmless).</li>
+<li><strong>Only 0.5% are DIRECT_DESTRUCTIVE</strong> (one ordering works) &mdash; in code, when both agents touch the same lines, it&rsquo;s almost always the case that NEITHER ordering works, unlike Blocksworld where you can always undo and redo.</li>
+<li><strong>Code patches are &ldquo;more non-serializable&rdquo; than Blocksworld</strong> because patches have fixed line contexts. In Blocksworld, you can always unstack and rebuild (0% NS). In code, if both patches touch lines 40-85, neither can apply after the other (24.1% NS).</li>
+</ol>
+</div>
+
+<h2>Comparison with PlanBench</h2>
+<table>
+<tr><th>Property</th><th>PlanBench (Blocksworld)</th><th>CooperBench (Code)</th></tr>
+<tr><td>Subgoals</td><td>PDDL goals: <code>on(A,B)</code></td><td>Feature patches from 2 agents</td></tr>
+<tr><td>Shared resource</td><td>Block (clear(B) consumed)</td><td>Code symbol (<code>file::function</code>)</td></tr>
+<tr><td>Can undo?</td><td>Yes (unstack + rebuild)</td><td>No (patch context is fixed)</td></tr>
+<tr><td>INDEPENDENT</td><td>20.9% (4-block)</td><td>69.3%</td></tr>
+<tr><td>SYNERGY</td><td>47.4% (4-block)</td><td>6.1%</td></tr>
+<tr><td>DIRECT_DESTRUCTIVE</td><td>24.6% (4-block)</td><td>0.5%</td></tr>
+<tr><td>NON_SERIALIZABLE</td><td>0% (always undoable)</td><td>24.1% (patches can&rsquo;t undo)</td></tr>
+</table>
+
+<div class="concept" style="border-left-color:#9b59b6">
+<h4>Why is CooperBench more non-serializable than Blocksworld?</h4>
+<p>In Blocksworld, achieving on(A,B) makes on(B,C) <em>costlier</em> but never <em>impossible</em> &mdash; you can always unstack A from B and try again. In code, once Agent A&rsquo;s patch changes lines 40-85, Agent B&rsquo;s patch (which expects the <em>original</em> lines 40-85 as context) simply <strong>cannot apply</strong>. There is no &ldquo;undo&rdquo; in <code>git apply</code>. This makes code patches inherently more prone to non-serializable interactions than classical planning domains.</p>
+</div>
+
+<h2>Methodology Details</h2>
+<div class="card">
+<h3>Tools</h3>
+<ul>
+<li><strong>PatchSymbolExtractor</strong>: Regex-based extraction of function defs, class defs, imports, method defs from unified diff hunks</li>
+<li><strong>Hunk overlap simulation</strong>: Parse <code>@@ -start,count +start,count @@</code> headers from both patches; check if line ranges overlap in the same file</li>
+<li><strong>Import filtering</strong>: Symbols matching <code>typing.*</code>, <code>contextlib.*</code>, <code>re</code>, <code>json</code>, etc. treated as idempotent (SYNERGY not DESTRUCTIVE)</li>
+<li><strong>Registry filtering</strong>: <code>__init__.py</code> re-exports treated as commutative list additions (SYNERGY)</li>
+</ul>
+
+<h3>Limitations</h3>
+<ul>
+<li>Regex-based extraction (not AST-level) &mdash; may miss some relationships</li>
+<li>Python-only symbol extraction &mdash; Go/Rust/TypeScript get coarser analysis</li>
+<li>No transitive analysis &mdash; cross-file import chains not traced (TRANSITIVE_DESTRUCTIVE = 0%)</li>
+<li>Hunk overlap is a proxy for <code>git apply</code> failure &mdash; actual application may succeed in edge cases</li>
+</ul>
+</div>
+
+<p style="color:#888;font-size:.85em;margin-top:30px">Analysis: PatchSymbolExtractor + hunk overlap simulation. Source: <a href="https://github.com/cooperbench/CooperBench">CooperBench</a> (652 tasks, 12 repos, 4 languages). Taxonomy: <a href="https://www.sciencedirect.com/science/article/abs/pii/0004370294900124">Korf 1987 / Barrett &amp; Weld 1994</a>.</p>
+
+</div></body></html>
