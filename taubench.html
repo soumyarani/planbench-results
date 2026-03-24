@@ -1,0 +1,205 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>τ-bench — 5-Category Subgoal Interaction Analysis</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5;line-height:1.6;color:#1a1a2e}
+.container{max-width:1200px;margin:0 auto}
+h1{border-bottom:3px solid #3498db;padding-bottom:8px}
+h2{color:#2c3e50;margin-top:30px}
+h3{color:#34495e}
+.card{background:white;border-radius:10px;padding:20px;margin:15px 0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+table{border-collapse:collapse;width:100%;margin:10px 0}
+th{background:#2c3e50;color:white;padding:8px 12px;text-align:left;font-size:.85em}
+td{padding:6px 12px;border-bottom:1px solid #eee;font-size:.85em}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78em;font-weight:600;color:white}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:15px 0}
+.stat-box{background:white;border-radius:10px;padding:14px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.stat-value{font-size:1.8em;font-weight:700}
+.stat-label{font-size:.78em;color:#666}
+.concept{border-left:4px solid #3498db;padding:12px 16px;margin:12px 0;background:#f8f9fa;border-radius:0 6px 6px 0}
+.example{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin:12px 0}
+.example-title{font-weight:700;color:#2c3e50;margin-bottom:8px}
+.code{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:.85em;background:#1e2a3a;color:#a8d8ea;padding:10px 14px;border-radius:6px;margin:6px 0;overflow-x:auto;white-space:pre}
+nav{background:white;border-radius:10px;padding:12px 20px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.15);display:flex;gap:10px;flex-wrap:wrap}
+nav a{padding:6px 16px;border-radius:15px;text-decoration:none;font-size:.85em;font-weight:600;color:white}
+</style></head><body><div class="container">
+
+<nav>
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="index.html" style="background:#e74c3c">PlanBench Results</a>
+<a href="cooperbench.html" style="background:#27ae60">CooperBench Results</a>
+<a href="taubench.html" style="background:#f39c12">τ-bench Results</a>
+<a href="fundamentals.html" style="background:#2c3e50">Planning Fundamentals</a>
+</nav>
+
+<h1>&tau;-bench &mdash; 5-Category Subgoal Interaction Analysis</h1>
+<p><strong>165 tasks</strong> (115 retail + 50 airline). An agent interacts with a simulated user to execute customer service operations. We analyze whether the <strong>goals</strong> (state-changing mutations) within each task interact.</p>
+
+<div class="concept" style="border-left-color:#e67e22">
+<h4>What are the subgoals?</h4>
+<p>Each &tau;-bench task has a gold solution: a sequence of tool/API calls. Most calls are <strong>lookups</strong> (gathering information). The actual <strong>goals</strong> are the <strong>mutations</strong> &mdash; actions that change entity state (cancel order, modify address, return items). We analyze only goal-to-goal interactions, not lookup-to-lookup.</p>
+<p><strong>Key insight:</strong> Information gathering (find_user_id, get_order_details) is like <code>handempty</code> in Blocksworld &mdash; a reusable resource that is never consumed. Only entity state changes (order_pending &rarr; order_cancelled) create real interactions.</p>
+</div>
+
+<h2>Methodology</h2>
+
+<div class="card">
+<h3>Step 1: Identify Goals (Mutations) per Task</h3>
+<p>From each task&rsquo;s gold solution, extract only state-changing actions:</p>
+<table style="max-width:800px">
+<tr><th>Domain</th><th>Goal Actions (Mutations)</th><th>Lookup Actions (Not Goals)</th></tr>
+<tr><td>Retail</td><td>cancel_order, modify_items, modify_address, modify_payment, return_items, exchange_items, modify_user_address</td><td>find_user_id, get_user_details, get_order_details, get_product_details, calculate</td></tr>
+<tr><td>Airline</td><td>cancel_reservation, update_flights, update_passengers, update_baggages, book_reservation</td><td>get_user_details, get_reservation_details, search_flight, list_airports, calculate</td></tr>
+</table>
+
+<h3>Step 2: Model Entity State Effects</h3>
+<p>For each goal action, define what entity state it NEEDS, DELETES, and ADDS &mdash; exactly like PlanBench&rsquo;s STRIPS model:</p>
+<table style="max-width:900px">
+<tr><th>Goal Action</th><th>NEEDS (precondition)</th><th>DELETES</th><th>ADDS</th></tr>
+<tr><td>cancel_pending_order(X)</td><td>order_pending(X)</td><td style="color:#e74c3c;font-weight:bold">order_pending(X)</td><td>order_cancelled(X)</td></tr>
+<tr><td>modify_pending_order_*(X)</td><td>order_pending(X)</td><td>&mdash;</td><td>*_modified(X)</td></tr>
+<tr><td>return_delivered_order(X)</td><td>order_delivered(X)</td><td style="color:#e74c3c;font-weight:bold">order_delivered(X)</td><td>order_returned(X)</td></tr>
+<tr><td>exchange_delivered_order(X)</td><td>order_delivered(X)</td><td style="color:#e74c3c;font-weight:bold">order_delivered(X)</td><td>items_exchanged(X)</td></tr>
+<tr><td>cancel_reservation(R)</td><td>reservation_active(R)</td><td style="color:#e74c3c;font-weight:bold">reservation_active(R)</td><td>reservation_cancelled(R)</td></tr>
+<tr><td>update_reservation_*(R)</td><td>reservation_active(R)</td><td>&mdash;</td><td>*_updated(R)</td></tr>
+</table>
+<p><strong>Only actions that DELETE state create destructive interactions.</strong> Modify/update actions NEED entity state but don&rsquo;t consume it.</p>
+
+<h3>Step 3: Classify Goal Pairs (Exact PlanBench Mapping)</h3>
+<table style="max-width:900px">
+<tr><th>Category</th><th>Condition</th><th>PlanBench Analog</th></tr>
+<tr><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>Different entities (X &ne; Y)</td><td>on(A,B) + on(C,D) &mdash; no shared blocks</td></tr>
+<tr><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>Same entity, both NEED same state, neither DELETES it</td><td>Two goals needing clear(B) where neither consumes it</td></tr>
+<tr><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>Same entity, one goal DELETES state the other NEEDS</td><td>on(A,B) + on(B,C) &mdash; one ordering required</td></tr>
+<tr><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>Same entity, BOTH goals DELETE state the other NEEDS</td><td>on(A,B) + on(B,A) &mdash; mutual destruction</td></tr>
+</table>
+</div>
+
+<h2>Results</h2>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">60</div><div class="stat-label">Multi-Goal Tasks</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">147</div><div class="stat-label">Goal Pairs</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#3498db">121</div><div class="stat-label">Independent</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#27ae60">24</div><div class="stat-label">Synergy</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">1</div><div class="stat-label">Direct Destructive</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">1</div><div class="stat-label">Non-Serializable</div></div>
+</div>
+
+<div class="card">
+<h3>Retail (45 multi-goal tasks, 105 goal pairs)</h3>
+<table style="max-width:700px">
+<tr><th>Category</th><th>Count</th><th>%</th><th>Interpretation</th></tr>
+<tr><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>90</td><td>85.7%</td><td>Goals operate on different orders &mdash; no shared state</td></tr>
+<tr><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>14</td><td>13.3%</td><td>Same order, both need order_pending, neither deletes it</td></tr>
+<tr><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>0</td><td>0%</td><td>&mdash;</td></tr>
+<tr><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>1</td><td>1.0%</td><td>Return same order twice &mdash; both delete order_delivered</td></tr>
+</table>
+
+<h3>Airline (15 multi-goal tasks, 42 goal pairs)</h3>
+<table style="max-width:700px">
+<tr><th>Category</th><th>Count</th><th>%</th><th>Interpretation</th></tr>
+<tr><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>31</td><td>73.8%</td><td>Goals operate on different reservations</td></tr>
+<tr><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>10</td><td>23.8%</td><td>Same reservation, both need active, neither deletes it</td></tr>
+<tr><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>1</td><td>2.4%</td><td>Update + cancel on same reservation</td></tr>
+<tr><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>0</td><td>0%</td><td>&mdash;</td></tr>
+</table>
+</div>
+
+<h2>Concrete Examples</h2>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#3498db">INDEPENDENT</span> &mdash; Retail Task #4</div>
+<p><strong>Instruction:</strong> Modify items on two different orders</p>
+<div class="code">Goal 1: modify_pending_order_items(#W6247578)
+  NEEDS: order_pending(#W6247578)   DELETES: nothing
+
+Goal 2: modify_pending_order_items(#W4776164)
+  NEEDS: order_pending(#W4776164)   DELETES: nothing
+
+Different entities → no shared state → INDEPENDENT</div>
+<p><strong>PlanBench analog:</strong> <code>on(A,B) + on(C,D)</code> &mdash; different blocks, no interaction. Modifying order #W6247578 has zero effect on order #W4776164.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#27ae60">SYNERGY</span> &mdash; Retail Task #41</div>
+<p><strong>Instruction:</strong> Change address and modify items on the same order #W4082615</p>
+<div class="code">Goal 1: modify_pending_order_address(#W4082615)
+  NEEDS: order_pending(#W4082615)   DELETES: nothing
+
+Goal 2: modify_pending_order_items(#W4082615)
+  NEEDS: order_pending(#W4082615)   DELETES: nothing
+
+Same entity, both need order_pending, NEITHER deletes it → SYNERGY</div>
+<p><strong>PlanBench analog:</strong> Two goals both needing <code>clear(B)</code> where neither action consumes it. Both goals can succeed in any order &mdash; shared precondition is preserved.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> &mdash; Airline Task #34</div>
+<p><strong>Instruction:</strong> <em>&ldquo;You want to cancel your upcoming flights within reservation IDs XEHM4B and 59XX6W.&rdquo;</em></p>
+<p>The gold solution first updates flights on XEHM4B (downgrade from business), then cancels it:</p>
+<div class="code">Goal 1: update_reservation_flights(XEHM4B)
+  NEEDS: reservation_active(XEHM4B)   DELETES: nothing
+
+Goal 2: cancel_reservation(XEHM4B)
+  NEEDS: reservation_active(XEHM4B)   DELETES: reservation_active(XEHM4B) ←
+
+Goal 3: cancel_reservation(59XX6W)
+  NEEDS: reservation_active(59XX6W)   DELETES: reservation_active(59XX6W)
+
+Pair: Goal 1 vs Goal 2 → DIRECT_DESTRUCTIVE
+  cancel DELETES reservation_active(XEHM4B) which update NEEDS.
+  Must do update BEFORE cancel. Wrong order → update fails.
+
+Pair: Goal 1 vs Goal 3 → INDEPENDENT (different reservations)
+Pair: Goal 2 vs Goal 3 → INDEPENDENT (different reservations)</div>
+<p><strong>PlanBench analog:</strong> <code>on(B,C) + on(A,B)</code> chain &mdash; stack(A,B) deletes clear(B) which stack(B,C) needs. Must achieve on(B,C) before on(A,B). Same here: must update before cancel.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> &mdash; Retail Task #13</div>
+<p><strong>Instruction:</strong> <em>&ldquo;You want to return all things in order #W5490111&rdquo;</em></p>
+<p>The gold solution returns items from the SAME order in two separate return calls:</p>
+<div class="code">Goal 1: return_delivered_order_items(#W5490111)  [items A]
+  NEEDS: order_delivered(#W5490111)   DELETES: order_delivered(#W5490111) ←
+
+Goal 2: return_delivered_order_items(#W5490111)  [items B]
+  NEEDS: order_delivered(#W5490111)   DELETES: order_delivered(#W5490111) ←
+
+MUTUAL DESTRUCTION: Both need order_delivered(#W5490111), both delete it.
+  Goal 1 first → deletes order_delivered → Goal 2 cannot execute.
+  Goal 2 first → deletes order_delivered → Goal 1 cannot execute.
+  Neither ordering works.</div>
+<p><strong>PlanBench analog:</strong> <code>on(A,B) + on(B,A)</code> &mdash; mutual destruction. Both goals consume the same state. Requires combining both returns into a single API call (semantic merge).</p>
+</div>
+
+<h2>Key Findings</h2>
+
+<div class="card" style="border-left:4px solid #f39c12">
+<ol>
+<li><strong>&tau;-bench is 82% INDEPENDENT at the goal level.</strong> Most multi-goal tasks operate on different entities (different orders, different reservations). The goals don&rsquo;t interact at all.</li>
+<li><strong>16% SYNERGY</strong> &mdash; same entity, shared precondition, not consumed. Both goals can succeed in any order. The agent just needs to complete the shared lookups once.</li>
+<li><strong>Only 2 pairs (1.4%) have destructive interactions</strong> &mdash; one DIRECT_DESTRUCTIVE (cancel after update) and one NON_SERIALIZABLE (double return on same order). &tau;-bench barely tests subgoal conflict reasoning.</li>
+<li><strong>Previous analysis overcounted interactions</strong> by treating every ACTION pair (including lookups) as a subgoal pair. Lookups share information but information is never consumed &mdash; it&rsquo;s like <code>handempty</code> in Blocksworld.</li>
+</ol>
+</div>
+
+<h2>Comparison with PlanBench</h2>
+<table>
+<tr><th>Property</th><th>PlanBench (Blocksworld)</th><th>&tau;-bench (Customer Service)</th></tr>
+<tr><td>Subgoals</td><td>PDDL goals: <code>on(A,B)</code></td><td>Mutations: cancel, modify, return</td></tr>
+<tr><td>Shared resource</td><td>Block position (<code>clear(B)</code>)</td><td>Entity status (<code>order_pending(X)</code>)</td></tr>
+<tr><td>Reusable resource</td><td><code>handempty</code> (arm freed after each action)</td><td>Information (<code>has_user_id</code>, never consumed)</td></tr>
+<tr><td>INDEPENDENT</td><td>20.9% (4-block)</td><td>82.2% (most goals on different entities)</td></tr>
+<tr><td>SYNERGY</td><td>47.4% (4-block)</td><td>16.3%</td></tr>
+<tr><td>DIRECT_DESTRUCTIVE</td><td>24.6% (4-block)</td><td>0.7%</td></tr>
+<tr><td>NON_SERIALIZABLE</td><td>0% (Blocksworld always undoable)</td><td>0.7% (double return = mutual destruction)</td></tr>
+</table>
+
+<div class="concept" style="border-left-color:#9b59b6">
+<h4>Why is &tau;-bench mostly independent?</h4>
+<p>&tau;-bench tasks are designed as customer service scenarios where a user has multiple unrelated requests (&ldquo;cancel order A and return order B&rdquo;). The goals naturally operate on different entities. PlanBench Blocksworld, by contrast, forces all goals to share the same small set of blocks &mdash; creating much richer interactions.</p>
+</div>
+
+<p style="color:#888;font-size:.85em;margin-top:30px">Analysis: PDDL-modeled entity state effects. Only mutations (state-changing actions) treated as goals. Information gathering filtered as reusable (non-consumable) resource. Taxonomy: <a href="https://www.sciencedirect.com/science/article/abs/pii/0004370294900124">Korf 1987 / Barrett &amp; Weld 1994</a>.</p>
+
+</div></body></html>
