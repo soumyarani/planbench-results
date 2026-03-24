@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<title>Subgoal Interactions in Planning — A Complete Taxonomy</title>
+<style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, sans-serif; margin: 0; padding: 20px; background: #f0f2f5; color: #1a1a2e; line-height: 1.7; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    h1 { border-bottom: 3px solid #3498db; padding-bottom: 8px; }
+    h2 { color: #2c3e50; margin-top: 35px; border-left: 4px solid #3498db; padding-left: 12px; }
+    h3 { color: #34495e; }
+    .card { background: white; border-radius: 10px; padding: 24px; margin: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+    .concept { background: #eef2f7; border-radius: 8px; padding: 14px 16px; margin: 12px 0; border-left: 4px solid #3498db; }
+    .concept h4 { margin: 0 0 6px 0; color: #2c3e50; }
+    .finding { background: #fef9e7; border-radius: 8px; padding: 14px 16px; margin: 12px 0; border-left: 4px solid #f39c12; }
+    .key { background: #e8f8f5; border-radius: 8px; padding: 14px 16px; margin: 12px 0; border-left: 4px solid #27ae60; }
+    .world { display: flex; gap: 20px; align-items: flex-end; padding: 15px 20px 20px; background: #f8f9fa; border-radius: 8px; margin: 8px 0; min-height: 110px; position: relative; }
+    .world::after { content: ''; position: absolute; bottom: 12px; left: 15px; right: 15px; height: 3px; background: #555; border-radius: 2px; }
+    .world-label { position: absolute; top: 6px; left: 12px; font-size: 0.75em; color: #888; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stack { display: flex; flex-direction: column-reverse; align-items: center; z-index: 1; margin-bottom: 16px; }
+    .block { width: 48px; height: 28px; border: 2px solid rgba(0,0,0,0.25); border-radius: 5px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1em; color: white; text-shadow: 1px 1px 1px rgba(0,0,0,0.3); }
+    .b-a { background: #e74c3c; } .b-b { background: #3498db; } .b-c { background: #2ecc71; }
+    .b-d { background: #f39c12; } .b-e { background: #9b59b6; }
+    .arrow-between { text-align: center; font-size: 2em; color: #999; padding: 0 10px; align-self: center; z-index: 1; margin-bottom: 16px; }
+    table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    th { background: #2c3e50; color: white; padding: 10px 14px; text-align: left; }
+    td { padding: 8px 14px; border-bottom: 1px solid #eee; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 0.82em; font-weight: 600; color: white; }
+    .graph-container { text-align: center; margin: 15px 0; }
+    .dim-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 15px 0; }
+    @media (max-width: 800px) { .dim-grid { grid-template-columns: 1fr; } }
+    .dim-box { border: 2px solid #ddd; border-radius: 10px; padding: 16px; }
+    .dim-box h4 { margin: 0 0 8px; }
+    .step-box { background: #f8f9fa; border: 1px solid #ddd; border-radius: 8px; padding: 12px 16px; margin: 8px 0; }
+    .nav-bar { background: white; border-radius: 10px; padding: 16px 20px; margin: 12px 0; box-shadow: 0 2px 6px rgba(0,0,0,0.15); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .nav-bar a { padding: 6px 16px; color: white; border-radius: 15px; text-decoration: none; font-size: 0.85em; font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Subgoal Interactions in Planning &mdash; A Complete Taxonomy</h1>
+
+<div class="nav-bar">
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="fundamentals.html" style="background:#2c3e50">Planning Fundamentals</a>
+<a href="index.html#summary-section" style="background:#e74c3c">PlanBench Results</a>
+<a href="index.html#transitive-section" style="background:#e67e22">Transitive Dependencies</a>
+<a href="index.html#cross-benchmark" style="background:#9b59b6">Cross-Benchmark</a>
+</div>
+
+<p>When a planning problem has multiple goals, those goals can interact. Understanding these interactions is central to planning &mdash; and to evaluating whether LLM benchmarks actually test planning reasoning. This page defines the complete taxonomy, grounded in the planning literature (Korf 1987, Barrett &amp; Weld 1993, Hoffmann et al. 2004).</p>
+
+<!-- THREE DIMENSIONS -->
+
+<div class="card">
+<h2 style="margin-top:0">Three Dimensions of Subgoal Interaction</h2>
+
+<p>Subgoal interactions have three independent dimensions. Asking &ldquo;is this interaction bipartite or destructive?&rdquo; is like asking &ldquo;is this fruit red or sweet?&rdquo; &mdash; those are different properties of the same thing.</p>
+
+<div class="dim-grid">
+<div class="dim-box" style="border-color:#e74c3c">
+<h4 style="color:#e74c3c">1. Structural Cause</h4>
+<p><strong>WHY</strong> does the interaction exist?</p>
+<ul style="margin:4px 0;padding-left:18px">
+<li>Shared goal variables</li>
+<li>Init-state coupling</li>
+<li>Transitive chain</li>
+<li>No coupling</li>
+</ul>
+</div>
+<div class="dim-box" style="border-color:#27ae60">
+<h4 style="color:#27ae60">2. Behavioral Type</h4>
+<p><strong>WHAT</strong> happens at execution?</p>
+<ul style="margin:4px 0;padding-left:18px">
+<li>Independent</li>
+<li>Synergistic (helps)</li>
+<li>Destructive (harms)</li>
+<li>Non-serializable</li>
+</ul>
+</div>
+<div class="dim-box" style="border-color:#9b59b6">
+<h4 style="color:#9b59b6">3. Graph Topology</h4>
+<p><strong>SHAPE</strong> of the full interaction graph</p>
+<ul style="margin:4px 0;padding-left:18px">
+<li>Chain</li>
+<li>Clique</li>
+<li>Star</li>
+<li>Bipartite</li>
+<li>Disconnected</li>
+</ul>
+</div>
+</div>
+
+<div class="key">
+<strong>These dimensions are orthogonal.</strong> A bipartite topology can produce synergistic or destructive behavior. A destructive interaction can arise from shared variables or init-state coupling. The graph topology is a property of the full goal set, not of individual pairs.
+</div>
+</div>
+
+<!-- DIMENSION 1 -->
+
+<div class="card">
+<h2 style="margin-top:0">Dimension 1: Structural Cause</h2>
+<p><strong>Why do these two goals interact?</strong> Determined by inspecting goal definitions and the initial state.</p>
+
+<h3>Shared Goal Variables</h3>
+<p>Two goals mention the same block. The most direct form of coupling.</p>
+<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center">
+<div>
+<div class="world"><div class="world-label">Initial</div>
+    <div class="stack"><div class="block b-c">C</div><div class="block b-b">B</div></div>
+    <div class="stack"><div class="block b-a">A</div></div>
+    <div class="stack"><div class="block b-d">D</div></div>
+</div></div>
+<div class="arrow-between">&rarr;</div>
+<div>
+<div class="world"><div class="world-label">Goal</div>
+    <div class="stack"><div class="block b-d">D</div><div class="block b-b">B</div><div class="block b-a">A</div></div>
+    <div class="stack"><div class="block b-c">C</div></div>
+</div></div>
+</div>
+<p><strong>Instance-8:</strong> on(A,<strong style="color:#3498db">B</strong>) and on(<strong style="color:#3498db">B</strong>,D) &mdash; block B appears in both goals. Moving B for one goal directly affects the other.</p>
+
+<h3>Init-State Coupling</h3>
+<p>Goals mention completely different blocks, but the initial configuration places one goal&rsquo;s blocks on top of the other goal&rsquo;s blocks.</p>
+<div style="display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center">
+<div>
+<div class="world"><div class="world-label">Initial</div>
+    <div class="stack"><div class="block b-a">A</div><div class="block b-c">C</div></div>
+    <div class="stack"><div class="block b-d">D</div><div class="block b-b">B</div></div>
+</div></div>
+<div class="arrow-between">&rarr;</div>
+<div>
+<div class="world"><div class="world-label">Goal</div>
+    <div class="stack"><div class="block b-a">A</div><div class="block b-b">B</div></div>
+    <div class="stack"><div class="block b-d">D</div><div class="block b-c">C</div></div>
+</div></div>
+</div>
+<p><strong>Instance-20:</strong> on(B,A) and on(C,D) &mdash; goals share NO blocks ({B,A} &cap; {C,D} = &empty;). But in the init state, <strong>C sits on A</strong> and <strong>B sits on D</strong> &mdash; each goal&rsquo;s blocks are tangled with the other&rsquo;s.</p>
+
+<h3>Transitive Chain</h3>
+<p>Two goals share no blocks directly, but are connected through a chain of intermediate goals that do share blocks.</p>
+<p><strong>Instance-458:</strong> on(A,C) and on(B,E) share no blocks ({A,C} &cap; {B,E} = &empty;). But on(C,B) shares C with the first and B with the second, creating a chain: on(B,E) &rarr; on(C,B) &rarr; on(A,C).</p>
+
+<h3>No Coupling</h3>
+<p>Goals involve disjoint blocks AND the init state has no cross-stacking. Truly independent &mdash; can be achieved in any order at no extra cost.</p>
+</div>
+
+<!-- DIMENSION 2 -->
+
+<div class="card">
+<h2 style="margin-top:0">Dimension 2: Behavioral Type</h2>
+<p><strong>What happens when you try to achieve these goals?</strong> Determined by simulation or formal landmark analysis.</p>
+
+<table>
+<tr><th>Type</th><th>Definition</th><th>How to Detect</th><th>Blocksworld Example</th></tr>
+<tr>
+<td><span class="badge" style="background:#3498db">Independent</span></td>
+<td>Achieving G1 has no effect on the cost of G2</td>
+<td>cost(G2 after G1) = cost(G2 from init)</td>
+<td>on(A,B) and on(C,D) with flat init, no cross-stacking</td>
+</tr>
+<tr>
+<td><span class="badge" style="background:#27ae60">Synergistic</span></td>
+<td>Achieving G1 makes G2 cheaper or free</td>
+<td>cost(G2 after G1) &lt; cost(G2 from init)</td>
+<td>on(A,B) and ontable(C) when init has C on A &mdash; unstacking C helps both</td>
+</tr>
+<tr>
+<td><span class="badge" style="background:#e74c3c">Destructive (asymmetric)</span></td>
+<td>One ordering harms, the other doesn&rsquo;t</td>
+<td>cost(G2 after G1) &gt; cost(G2), but cost(G1 after G2) &le; cost(G1)</td>
+<td>on(A,B) and on(B,C) &mdash; the Sussman anomaly</td>
+</tr>
+<tr>
+<td><span class="badge" style="background:#c0392b">Destructive (symmetric)</span></td>
+<td>Both orderings make the other harder</td>
+<td>Both directions show cost increase</td>
+<td>Rare in Blocksworld</td>
+</tr>
+<tr>
+<td><span class="badge" style="background:#2c3e50">Non-serializable</span></td>
+<td>No total ordering achieves both goals without interleaving</td>
+<td>Every ordering requires undo/redo</td>
+<td>Classic Sussman anomaly with specific init states</td>
+</tr>
+</table>
+
+<div class="concept">
+<h4>The Sussman Anomaly = Asymmetric Destruction</h4>
+<p>For on(A,B) and on(B,C): achieving on(A,B) first puts A on B, making B not clear &mdash; so on(B,C) costs +2 extra steps (undo and redo). But achieving on(B,C) first leaves A unaffected, so on(A,B) costs the same. <strong>One direction harms, the other doesn&rsquo;t</strong> &mdash; this asymmetry is what makes ordering critical.</p>
+</div>
+</div>
+
+<!-- DIMENSION 3 -->
+
+<div class="card">
+<h2 style="margin-top:0">Dimension 3: Graph Topology</h2>
+<p>The <strong>shape of the interaction graph</strong> across all goals in an instance. Each node is a goal, each edge is an interaction. This is a property of the full goal set, not of individual pairs.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:15px">
+<div>
+<h4>Chain</h4>
+<div class="graph-container">
+<svg width="280" height="70" viewBox="0 0 280 70">
+    <circle cx="40" cy="35" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="40" y="39" text-anchor="middle" font-size="10" font-weight="bold">G1</text>
+    <circle cx="140" cy="35" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="140" y="39" text-anchor="middle" font-size="10" font-weight="bold">G2</text>
+    <circle cx="240" cy="35" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="240" y="39" text-anchor="middle" font-size="10" font-weight="bold">G3</text>
+    <line x1="60" y1="35" x2="120" y2="35" stroke="#e74c3c" stroke-width="2"/>
+    <line x1="160" y1="35" x2="220" y2="35" stroke="#e74c3c" stroke-width="2"/>
+    <text x="140" y="65" text-anchor="middle" font-size="9" fill="#666">Adjacent pairs interact</text>
+</svg>
+</div>
+</div>
+<div>
+<h4>Clique</h4>
+<div class="graph-container">
+<svg width="280" height="70" viewBox="0 0 280 70">
+    <circle cx="60" cy="45" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="60" y="49" text-anchor="middle" font-size="10" font-weight="bold">G1</text>
+    <circle cx="200" cy="45" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="200" y="49" text-anchor="middle" font-size="10" font-weight="bold">G2</text>
+    <circle cx="130" cy="15" r="20" fill="#fde8e8" stroke="#e74c3c" stroke-width="2"/>
+    <text x="130" y="19" text-anchor="middle" font-size="10" font-weight="bold">G3</text>
+    <line x1="80" y1="42" x2="180" y2="42" stroke="#e74c3c" stroke-width="2"/>
+    <line x1="75" y1="30" x2="113" y2="22" stroke="#e74c3c" stroke-width="2"/>
+    <line x1="147" y1="22" x2="185" y2="30" stroke="#e74c3c" stroke-width="2"/>
+    <text x="130" y="65" text-anchor="middle" font-size="9" fill="#666">Every pair interacts</text>
+</svg>
+</div>
+</div>
+<div>
+<h4>Bipartite</h4>
+<div class="graph-container">
+<svg width="280" height="70" viewBox="0 0 280 70">
+    <rect x="8" y="5" width="80" height="55" rx="6" fill="#fdf2f2" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4,3"/>
+    <circle cx="48" cy="22" r="12" fill="#fff" stroke="#333" stroke-width="1.5"/>
+    <text x="48" y="26" text-anchor="middle" font-size="8" font-weight="bold">G1</text>
+    <circle cx="48" cy="48" r="12" fill="#fff" stroke="#333" stroke-width="1.5"/>
+    <text x="48" y="52" text-anchor="middle" font-size="8" font-weight="bold">G2</text>
+    <rect x="192" y="5" width="80" height="55" rx="6" fill="#e8f4fd" stroke="#3498db" stroke-width="1" stroke-dasharray="4,3"/>
+    <circle cx="232" cy="22" r="12" fill="#fff" stroke="#333" stroke-width="1.5"/>
+    <text x="232" y="26" text-anchor="middle" font-size="8" font-weight="bold">G3</text>
+    <circle cx="232" cy="48" r="12" fill="#fff" stroke="#333" stroke-width="1.5"/>
+    <text x="232" y="52" text-anchor="middle" font-size="8" font-weight="bold">G4</text>
+    <line x1="60" y1="22" x2="220" y2="22" stroke="#e67e22" stroke-width="1.5"/>
+    <line x1="60" y1="22" x2="220" y2="48" stroke="#e67e22" stroke-width="1.5"/>
+    <line x1="60" y1="48" x2="220" y2="22" stroke="#e67e22" stroke-width="1.5"/>
+    <line x1="60" y1="48" x2="220" y2="48" stroke="#e67e22" stroke-width="1.5"/>
+    <text x="140" y="65" text-anchor="middle" font-size="9" fill="#666">Cross-group interactions</text>
+</svg>
+</div>
+</div>
+<div>
+<h4>Disconnected</h4>
+<div class="graph-container">
+<svg width="280" height="70" viewBox="0 0 280 70">
+    <circle cx="50" cy="35" r="20" fill="#e8f4fd" stroke="#3498db" stroke-width="2"/>
+    <text x="50" y="39" text-anchor="middle" font-size="10" font-weight="bold">G1</text>
+    <circle cx="120" cy="35" r="20" fill="#e8f4fd" stroke="#3498db" stroke-width="2"/>
+    <text x="120" y="39" text-anchor="middle" font-size="10" font-weight="bold">G2</text>
+    <line x1="70" y1="35" x2="100" y2="35" stroke="#e74c3c" stroke-width="2"/>
+    <text x="175" y="39" font-size="14" fill="#ccc">|</text>
+    <circle cx="230" cy="35" r="20" fill="#e8f4fd" stroke="#3498db" stroke-width="2"/>
+    <text x="230" y="39" text-anchor="middle" font-size="10" font-weight="bold">G3</text>
+    <text x="140" y="65" text-anchor="middle" font-size="9" fill="#666">Independent components</text>
+</svg>
+</div>
+</div>
+</div>
+</div>
+
+<!-- HOW THEY COMBINE -->
+
+<div class="card">
+<h2 style="margin-top:0">How the Dimensions Combine: PlanBench Examples</h2>
+
+<p>Each goal pair has values on all three dimensions. The same topology can produce different behaviors, and the same behavior can arise from different structural causes:</p>
+
+<table>
+<tr><th>Instance</th><th>Goals</th><th>Structural Cause</th><th>Behavioral Type</th><th>Topology</th></tr>
+<tr>
+<td><strong>Instance-8</strong></td>
+<td>on(A,B) + on(B,D)</td>
+<td><span class="badge" style="background:#e74c3c">Shared variable (B)</span></td>
+<td><span class="badge" style="background:#e74c3c">Destructive asymmetric</span></td>
+<td>Single edge</td>
+</tr>
+<tr>
+<td><strong>Instance-20</strong></td>
+<td>on(B,A) + on(C,D)</td>
+<td><span class="badge" style="background:#f39c12">Init-state coupling</span></td>
+<td><span class="badge" style="background:#27ae60">Synergistic</span><br><small>Unstacking C from A frees both A and C</small></td>
+<td>Bipartite (through init)</td>
+</tr>
+<tr>
+<td><strong>Instance-458</strong><br><small>pair: on(B,E) &harr; on(C,B)</small></td>
+<td>3-goal tower</td>
+<td><span class="badge" style="background:#e74c3c">Shared variable (B)</span></td>
+<td><span class="badge" style="background:#e74c3c">Destructive asymmetric</span></td>
+<td rowspan="2">Clique (with transitive)</td>
+</tr>
+<tr>
+<td><strong>Instance-458</strong><br><small>pair: on(B,E) &harr; on(A,C)</small></td>
+<td>3-goal tower</td>
+<td><span class="badge" style="background:#e67e22">Transitive chain</span></td>
+<td><span class="badge" style="background:#e74c3c">Destructive (cascading)</span></td>
+</tr>
+</table>
+
+<div class="finding">
+Instance-20 has a bipartite init-state coupling, but the behavioral type is <em>synergistic</em>, not destructive. The same structural pattern can produce different behaviors depending on the specifics. This is why the three dimensions must be measured independently.
+</div>
+</div>
+
+<!-- DETECTION -->
+
+<div class="card">
+<h2 style="margin-top:0">Detection: Fast Downward Landmark Analysis</h2>
+
+<p><strong>Fast Downward&rsquo;s landmark analysis</strong> (Hoffmann et al. 2004, Richter et al. 2008) is the established method that captures interactions from all structural causes. It works by:</p>
+
+<div class="step-box">
+<strong>Step 1:</strong> Build a <strong>relaxed planning graph</strong> from the initial state &mdash; this is where init-state dependencies enter the analysis
+</div>
+<div class="step-box">
+<strong>Step 2:</strong> Backchain from each goal fact, finding <strong>landmarks</strong> &mdash; facts that must become true at some point in every valid plan
+</div>
+<div class="step-box">
+<strong>Step 3:</strong> Compute <strong>orderings</strong> between landmarks:<br>
+&bull; <strong>Greedy-necessary:</strong> A must hold immediately before B is first achieved &mdash; a direct, strict ordering<br>
+&bull; <strong>Natural:</strong> A must be true at some point before B &mdash; can be transitive through intermediate landmarks
+</div>
+
+<table>
+<tr><th>Structural Cause</th><th>How Fast Downward Detects It</th></tr>
+<tr><td>Shared goal variables</td><td>Goals share achiever preconditions directly</td></tr>
+<tr><td>Init-state coupling</td><td>Backchaining discovers init-state facts as landmarks (e.g., <code>clear(A)</code> requires moving C that sits on A)</td></tr>
+<tr><td>Transitive chain</td><td>Transitive closure of landmark orderings connects non-adjacent goals</td></tr>
+</table>
+</div>
+
+<!-- LITERATURE -->
+
+<div class="card">
+<h2 style="margin-top:0">Literature Foundations</h2>
+<table>
+<tr><th>Paper</th><th>Contribution</th></tr>
+<tr><td><strong>Korf (1987)</strong></td><td>Serialization taxonomy: independent, trivially serializable, laboriously serializable, non-serializable</td></tr>
+<tr><td><strong>Barrett &amp; Weld (1993)</strong></td><td>Serializability is planner-relative. Defined clobbering (destructive) and enabling (synergistic) interactions</td></tr>
+<tr><td><strong>Koehler &amp; Hoffmann (2000)</strong></td><td>Reasonable and forced goal orderings with detection algorithms</td></tr>
+<tr><td><strong>Hoffmann et al. (2004)</strong></td><td>Landmark orderings: greedy-necessary, natural, reasonable</td></tr>
+<tr><td><strong>Richter et al. (2008)</strong></td><td>Improved landmark generation (lm_rhw), used in LAMA planner (IPC winner)</td></tr>
+<tr><td><strong>Kambhampati et al. (1996)</strong></td><td>Unified prior work through candidate set analysis</td></tr>
+</table>
+</div>
+
+</div>
+</body>
+</html>
