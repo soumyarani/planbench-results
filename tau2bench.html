@@ -1,0 +1,210 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>τ2-bench — 5-Category Subgoal Interaction Analysis</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5;line-height:1.6;color:#1a1a2e}
+.container{max-width:1200px;margin:0 auto}
+h1{border-bottom:3px solid #3498db;padding-bottom:8px}
+h2{color:#2c3e50;margin-top:30px}
+h3{color:#34495e}
+.card{background:white;border-radius:10px;padding:20px;margin:15px 0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+table{border-collapse:collapse;width:100%;margin:10px 0}
+th{background:#2c3e50;color:white;padding:8px 12px;text-align:left;font-size:.85em}
+td{padding:6px 12px;border-bottom:1px solid #eee;font-size:.85em}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78em;font-weight:600;color:white}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:15px 0}
+.stat-box{background:white;border-radius:10px;padding:14px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.stat-value{font-size:1.8em;font-weight:700}
+.stat-label{font-size:.78em;color:#666}
+.concept{border-left:4px solid #3498db;padding:12px 16px;margin:12px 0;background:#f8f9fa;border-radius:0 6px 6px 0}
+.example{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin:12px 0}
+.example-title{font-weight:700;color:#2c3e50;margin-bottom:8px}
+.code{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:.85em;background:#1e2a3a;color:#a8d8ea;padding:10px 14px;border-radius:6px;margin:6px 0;overflow-x:auto;white-space:pre}
+nav{background:white;border-radius:10px;padding:12px 20px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.15);display:flex;gap:10px;flex-wrap:wrap}
+nav a{padding:6px 16px;border-radius:15px;text-decoration:none;font-size:.85em;font-weight:600;color:white}
+</style></head><body><div class="container">
+
+<nav>
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="index.html" style="background:#e74c3c">PlanBench Results</a>
+<a href="cooperbench.html" style="background:#27ae60">CooperBench Results</a>
+<a href="taubench.html" style="background:#f39c12">&tau;-bench Results</a>
+<a href="tau2bench.html" style="background:#e67e22">&tau;2-bench Results</a>
+<a href="fundamentals.html" style="background:#2c3e50">Planning Fundamentals</a>
+</nav>
+
+<h1>&tau;2-bench &mdash; 5-Category Subgoal Interaction Analysis</h1>
+<p><strong>2,285 telecom troubleshooting tasks</strong> (Sierra Research, 2025). Unlike &tau;-bench where the agent executes API calls, in &tau;2-bench the <strong>user</strong> performs physical device actions (toggle settings, reboot, reseat SIM) guided by the agent. This is a <strong>Dec-POMDP</strong> where both agent and user modify shared state.</p>
+
+<div class="concept" style="border-left-color:#e67e22">
+<h4>Key Difference from &tau;-bench</h4>
+<table style="max-width:700px">
+<tr><th>Property</th><th>&tau;-bench</th><th>&tau;2-bench</th></tr>
+<tr><td>Who executes actions?</td><td>Agent calls APIs</td><td><strong>User</strong> toggles device settings</td></tr>
+<tr><td>Agent role</td><td>Execute tool calls</td><td><strong>Guide user</strong> through troubleshooting</td></tr>
+<tr><td>State changes</td><td>Agent-controlled, deterministic</td><td><strong>User-controlled</strong>, agent must verify</td></tr>
+<tr><td>Destructive interactions</td><td>0.7% (rare)</td><td><strong>15.8%</strong> (common)</td></tr>
+</table>
+</div>
+
+<h2>Methodology</h2>
+
+<div class="card">
+<h3>What Are the Subgoals?</h3>
+<p>Each task has a gold solution: a sequence of <strong>user-side device actions</strong> that the agent should guide the user to perform. These are physical actions on the user&rsquo;s phone:</p>
+<table style="max-width:800px">
+<tr><th>Action</th><th>What it does</th><th>Destructive?</th></tr>
+<tr><td><code>toggle_airplane_mode</code></td><td>Toggles airplane mode ON/OFF</td><td style="color:#e74c3c;font-weight:bold">YES &mdash; blocks all connectivity when ON</td></tr>
+<tr><td><code>toggle_data</code></td><td>Enables/disables mobile data</td><td>No (unless airplane mode is ON)</td></tr>
+<tr><td><code>toggle_roaming</code></td><td>Enables/disables data roaming</td><td>No (unless airplane mode is ON)</td></tr>
+<tr><td><code>toggle_wifi_calling</code></td><td>Enables/disables WiFi calling</td><td>No (unless airplane mode is ON)</td></tr>
+<tr><td><code>reboot_device</code></td><td>Restarts the phone</td><td style="color:#e74c3c;font-weight:bold">YES &mdash; may reset toggled settings</td></tr>
+<tr><td><code>reset_apn_settings</code></td><td>Resets network configuration</td><td style="color:#e74c3c;font-weight:bold">YES &mdash; undoes manual network config</td></tr>
+<tr><td><code>reseat_sim_card</code></td><td>Remove and reinsert SIM</td><td style="color:#e74c3c;font-weight:bold">YES &mdash; drops all active connections</td></tr>
+<tr><td><code>set_network_mode_preference</code></td><td>Set 4G/5G/auto preference</td><td>No</td></tr>
+<tr><td><code>grant_app_permission</code></td><td>Grant app access to feature</td><td>No</td></tr>
+</table>
+
+<h3>Interaction Rules (from Telecom Domain Knowledge)</h3>
+<p>Unlike &tau;-bench where we modeled from PDDL, &tau;2-bench interactions come from <strong>device physics</strong>:</p>
+<table style="max-width:900px">
+<tr><th>Rule</th><th>Interaction</th><th>PlanBench Analog</th></tr>
+<tr><td><strong>Airplane mode blocks toggles</strong><br><code>toggle_airplane_mode</code> must be OFF before <code>toggle_data</code>, <code>toggle_roaming</code>, <code>toggle_wifi_calling</code> can work</td><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td><code>on(A,B)</code> needs <code>clear(B)</code>; airplane mode &ldquo;deletes&rdquo; all connectivity</td></tr>
+<tr><td><strong>Reboot resets state</strong><br><code>reboot_device</code> may undo previously toggled settings</td><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>Like <code>unstack(everything)</code> &mdash; resets blocks to table</td></tr>
+<tr><td><strong>SIM reseat drops connections</strong><br><code>reseat_sim_card</code> temporarily breaks all connectivity</td><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>Temporary state destruction requiring re-establishment</td></tr>
+<tr><td><strong>APN reset undoes config</strong><br><code>reset_apn_settings</code> reverts <code>set_network_mode_preference</code></td><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>One goal&rsquo;s effect is erased by another</td></tr>
+<tr><td><strong>Independent toggles</strong><br><code>toggle_data</code> and <code>toggle_wifi_calling</code> don&rsquo;t affect each other</td><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>Different entities, no shared state</td></tr>
+<tr><td><strong>Same permission granted twice</strong><br><code>grant_app_permission</code> &times; 2 is idempotent</td><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>Like shared imports in CooperBench</td></tr>
+</table>
+</div>
+
+<h2>Results</h2>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">2,285</div><div class="stat-label">Total Tasks</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">2,240</div><div class="stat-label">Multi-Action Tasks</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">35,996</div><div class="stat-label">Action Pairs</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#3498db">29,780</div><div class="stat-label">Independent</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#27ae60">512</div><div class="stat-label">Synergy</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">5,704</div><div class="stat-label">Direct Destructive</div></div>
+</div>
+
+<div class="card">
+<h3>Pair-Level Distribution (35,996 pairs)</h3>
+<table style="max-width:700px">
+<tr><th>Category</th><th>Count</th><th>%</th><th>Interpretation</th></tr>
+<tr><td><span class="badge" style="background:#3498db">INDEPENDENT</span></td><td>29,780</td><td>82.7%</td><td>Actions don&rsquo;t interfere (e.g., different toggles, permissions)</td></tr>
+<tr><td><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span></td><td>5,704</td><td>15.8%</td><td>One action undoes/blocks another (airplane mode, reboot, SIM reseat)</td></tr>
+<tr><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>512</td><td>1.4%</td><td>Same action twice = idempotent (grant permission)</td></tr>
+<tr><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>0</td><td>0%</td><td>Device actions always have a correct ordering</td></tr>
+</table>
+</div>
+
+<h2>Concrete Examples</h2>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> &mdash; Airplane Mode Blocks Roaming</div>
+<p><strong>Task:</strong> <code>[mobile_data_issue]airplane_mode_on|user_abroad_roaming_enabled_off</code></p>
+<p><strong>Scenario:</strong> User is abroad, mobile data not working. Airplane mode is stuck ON and roaming is disabled.</p>
+<div class="code">Gold solution (correct ordering):
+  Step 1: [USER] toggle_airplane_mode()     ← turn OFF airplane mode FIRST
+  Step 2: [USER] toggle_roaming()           ← NOW roaming can be enabled
+
+Wrong ordering:
+  Step 1: [USER] toggle_roaming()           ← FAILS: airplane mode blocks all connectivity
+  Step 2: [USER] toggle_airplane_mode()     ← too late, roaming toggle had no effect</div>
+<p><strong>PlanBench analog:</strong> <code>on(B,C) + on(A,B)</code> &mdash; must achieve <code>on(B,C)</code> first because <code>stack(A,B)</code> deletes <code>clear(B)</code>. Here, airplane mode &ldquo;deletes&rdquo; connectivity, so it must be toggled OFF before any connectivity setting can work.</p>
+<p><strong>delta(airplane&rarr;roaming) &gt; 0:</strong> Toggling airplane mode ON makes roaming toggle impossible (cost = &infin;). Agent must guide user to turn airplane mode OFF first.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> &mdash; Reboot Resets Toggle State</div>
+<p><strong>Task:</strong> <code>[mobile_data_issue]data_mode_off|network_mode_wrong|apn_wrong</code></p>
+<p><strong>Scenario:</strong> User&rsquo;s data isn&rsquo;t working. Multiple issues: data toggled off, wrong network mode, wrong APN settings.</p>
+<div class="code">Gold solution (correct ordering):
+  Step 1: [USER] reboot_device()                    ← reboot FIRST to clear cached state
+  Step 2: [USER] reset_apn_settings()               ← reset APN to defaults
+  Step 3: [USER] set_network_mode_preference(auto)   ← set correct network mode
+  Step 4: [USER] toggle_data()                       ← enable data LAST
+
+Wrong ordering:
+  Step 1: [USER] toggle_data()                       ← turn data on
+  Step 2: [USER] set_network_mode_preference(auto)   ← set network mode
+  Step 3: [USER] reboot_device()                     ← DESTROYS steps 1 &amp; 2!
+  Step 4: [USER] reset_apn_settings()                ← may work but data is off again</div>
+<p><strong>PlanBench analog:</strong> <code>reboot_device</code> is like a planning operator that DELETES multiple propositions at once (clears all toggles). Any toggle done BEFORE reboot gets undone. The agent must know: do destructive/resetting actions FIRST, then configure.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> &mdash; SIM Reseat Drops Connections</div>
+<p><strong>Task:</strong> <code>[mobile_data_issue]sim_card_loose|data_mode_off</code></p>
+<p><strong>Scenario:</strong> User&rsquo;s SIM card is loose and data is disabled.</p>
+<div class="code">Gold solution:
+  Step 1: [USER] reseat_sim_card()    ← physically remove and reinsert SIM
+  Step 2: [USER] toggle_data()        ← enable data after SIM is properly seated
+
+If reversed:
+  Step 1: [USER] toggle_data()        ← may turn ON but SIM is loose = unreliable
+  Step 2: [USER] reseat_sim_card()    ← drops ALL connections, data toggle may be lost</div>
+<p><strong>PlanBench analog:</strong> <code>reseat_sim_card</code> is like <code>putdown</code> in Blocksworld &mdash; it temporarily destroys the current state to create a clean foundation. Must do physical resets BEFORE logical configuration.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#3498db">INDEPENDENT</span> &mdash; Different Toggles</div>
+<p><strong>Task:</strong> <code>[wifi_calling_issue]data_mode_off|wifi_calling_disabled</code></p>
+<p><strong>Scenario:</strong> User needs both data and WiFi calling enabled.</p>
+<div class="code">Gold solution (either ordering works):
+  Step 1: [USER] toggle_data()           ← enable mobile data
+  Step 2: [USER] toggle_wifi_calling()   ← enable WiFi calling
+
+OR:
+  Step 1: [USER] toggle_wifi_calling()   ← enable WiFi calling
+  Step 2: [USER] toggle_data()           ← enable mobile data
+
+Both orderings work. Neither toggle affects the other.</div>
+<p><strong>PlanBench analog:</strong> <code>on(A,B) + on(C,D)</code> &mdash; different &ldquo;blocks&rdquo; (settings), no shared state. delta(A&rarr;B) = 0, delta(B&rarr;A) = 0.</p>
+</div>
+
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#27ae60">SYNERGY</span> &mdash; Same Permission Granted Twice</div>
+<p><strong>Task:</strong> <code>[mms_issue]break_app_both_permissions</code></p>
+<p><strong>Scenario:</strong> Messaging app needs both storage and network permissions.</p>
+<div class="code">Gold solution:
+  Step 1: [USER] grant_app_permission(storage)
+  Step 2: [USER] grant_app_permission(network)
+
+Both are idempotent. Granting one doesn't affect the other.
+Both contribute to the goal (app working). Mutual synergy.</div>
+<p><strong>PlanBench analog:</strong> Like shared imports in CooperBench &mdash; both actions assert the same type of precondition without consuming any resource.</p>
+</div>
+
+<h2>Key Findings</h2>
+
+<div class="card" style="border-left:4px solid #e67e22">
+<ol>
+<li><strong>&tau;2-bench has 22&times; more destructive interactions than &tau;-bench</strong> (15.8% vs 0.7%). Device physics creates real ordering constraints: airplane mode blocks toggles, reboot resets state, SIM reseat drops connections.</li>
+<li><strong>The agent&rsquo;s planning challenge is ORDERING</strong>: do destructive/resetting actions (reboot, SIM reseat, airplane mode OFF) BEFORE constructive actions (enable data, set network mode). Wrong ordering wastes user effort.</li>
+<li><strong>0% NON_SERIALIZABLE</strong> &mdash; there&rsquo;s always a correct ordering for device actions. Unlike code patches (CooperBench) where neither ordering may work, device settings can always be configured in the right sequence.</li>
+<li><strong>The Dec-POMDP aspect matters</strong>: the agent tells the user what to do, but the user executes. If the agent gives instructions in the wrong order, the user&rsquo;s actions undo each other &mdash; and the agent may not know until the user reports failure.</li>
+</ol>
+</div>
+
+<h2>Comparison: &tau;-bench vs &tau;2-bench</h2>
+<table>
+<tr><th>Property</th><th>&tau;-bench</th><th>&tau;2-bench</th></tr>
+<tr><td>Domain</td><td>Retail + Airline customer service</td><td>Telecom troubleshooting</td></tr>
+<tr><td>Who executes?</td><td>Agent calls APIs</td><td>User performs device actions</td></tr>
+<tr><td>Total pairs</td><td>147</td><td>35,996</td></tr>
+<tr><td>INDEPENDENT</td><td>82.2%</td><td>82.7%</td></tr>
+<tr><td>SYNERGY</td><td>16.3%</td><td>1.4%</td></tr>
+<tr><td>DIRECT_DESTRUCTIVE</td><td>0.7%</td><td style="color:#e74c3c;font-weight:bold">15.8%</td></tr>
+<tr><td>NON_SERIALIZABLE</td><td>0.7%</td><td>0%</td></tr>
+</table>
+
+<div class="concept" style="border-left-color:#9b59b6">
+<h4>Why &tau;2-bench has more destructive interactions</h4>
+<p>&tau;-bench goals operate on <strong>different entities</strong> (different orders/reservations) &mdash; cancelling order A doesn&rsquo;t affect order B. In &tau;2-bench, all actions operate on the <strong>same device</strong> &mdash; rebooting affects ALL settings. This is like Blocksworld where all goals share the same small set of blocks, creating dense interactions.</p>
+</div>
+
+<p style="color:#888;font-size:.85em;margin-top:30px">Analysis: Domain-knowledge-based classification of device action interactions. 2,285 telecom troubleshooting tasks from <a href="https://github.com/sierra-research/tau2-bench">tau2-bench</a> (Sierra Research, 2025). Taxonomy: <a href="https://www.sciencedirect.com/science/article/abs/pii/0004370294900124">Korf 1987 / Barrett &amp; Weld 1994</a>.</p>
+
+</div></body></html>
