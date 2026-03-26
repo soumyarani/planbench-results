@@ -1,0 +1,669 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>DTG Analysis — Domain Transition Graphs for Multi-Agent Planning</title>
+<style>
+body{font-family:-apple-system,sans-serif;margin:0;padding:20px;background:#f0f2f5;line-height:1.6;color:#1a1a2e}
+.container{max-width:1200px;margin:0 auto}
+h1{border-bottom:3px solid #3498db;padding-bottom:8px}
+h2{color:#2c3e50;margin-top:30px}
+h3{color:#34495e}
+.card{background:white;border-radius:10px;padding:20px;margin:15px 0;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+table{border-collapse:collapse;width:100%;margin:10px 0}
+th{background:#2c3e50;color:white;padding:8px 12px;text-align:left;font-size:.85em}
+td{padding:6px 12px;border-bottom:1px solid #eee;font-size:.85em}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.78em;font-weight:600;color:white}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:15px 0}
+.stat-box{background:white;border-radius:10px;padding:14px 8px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.stat-value{font-size:1.8em;font-weight:700}
+.stat-label{font-size:.78em;color:#666}
+.concept{border-left:4px solid #3498db;padding:12px 16px;margin:12px 0;background:#f8f9fa;border-radius:0 6px 6px 0}
+.example{background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:16px;margin:12px 0}
+.example-title{font-weight:700;color:#2c3e50;margin-bottom:8px}
+.code{font-family:'SF Mono',Monaco,Consolas,monospace;font-size:.85em;background:#1e2a3a;color:#a8d8ea;padding:10px 14px;border-radius:6px;margin:6px 0;overflow-x:auto;white-space:pre}
+nav{background:white;border-radius:10px;padding:12px 20px;margin:12px 0;box-shadow:0 2px 6px rgba(0,0,0,.15);display:flex;gap:10px;flex-wrap:wrap}
+nav a{padding:6px 16px;border-radius:15px;text-decoration:none;font-size:.85em;font-weight:600;color:white}
+.difficulty{display:inline-block;padding:2px 10px;border-radius:10px;font-size:.75em;font-weight:700;color:white;margin-left:6px}
+.diff-medium{background:#f39c12}
+.diff-hard{background:#e67e22}
+.diff-vhard{background:#e74c3c}
+.diff-mhard{background:#d35400}
+</style></head><body><div class="container">
+
+<nav>
+<strong style="color:#2c3e50;margin-right:4px">Navigate:</strong>
+<a href="index.html" style="background:#e74c3c">PlanBench Results</a>
+<a href="cooperbench.html" style="background:#27ae60">CooperBench Results</a>
+<a href="taubench.html" style="background:#f39c12">&tau;-bench Results</a>
+<a href="tau2bench.html" style="background:#8e44ad">&tau;2-bench Results</a>
+<a href="dtg_analysis.html" style="background:#2980b9">DTG Analysis</a>
+<a href="fundamentals.html" style="background:#2c3e50">Planning Fundamentals</a>
+</nav>
+
+<!-- ===== SECTION 1: What is a DTG? ===== -->
+
+<h1>Domain Transition Graphs (DTG) &mdash; Structural Analysis</h1>
+<p>A <strong>Domain Transition Graph</strong> reveals the structure hidden inside each benchmark domain. By mapping how state variables (fluents) transition between values, we can systematically identify where hard interactions live &mdash; and where benchmarks fail to test them.</p>
+
+<h2>Section 1: What is a DTG?</h2>
+
+<div class="concept" style="border-left-color:#2980b9">
+<h4>Definition</h4>
+<p>A <strong>Domain Transition Graph (DTG)</strong> for a state variable (fluent) is a directed graph where each <strong>node</strong> is a possible value of that variable, and each <strong>edge</strong> is an action that causes the transition from one value to another. DTGs were introduced by Helmert (2006) for the SAS+ planning formalism and are the backbone of causal graph heuristics in modern planners.</p>
+<p>In &tau;-bench, fluents are things like <code>order_status &isin; {pending, shipped, delivered, cancelled, returned, exchanged}</code>. Each API action (cancel_order, return_items, exchange_items) is an edge in this graph.</p>
+</div>
+
+<div class="card">
+<h3>Example: order_status DTG</h3>
+<div class="code">                        order_status DTG
+                        ================
+
+  pending ──[modify_*]──→ pending          (self-loop: non-destructive)
+     │
+     ├──[cancel]────────→ cancelled         (ABSORBING — no outgoing edges)
+     │
+     └──[ship]──────────→ shipped
+                             │
+                             └──[deliver]──→ delivered
+                                               │
+                                               ├──[return]───→ returned    (ABSORBING)
+                                               │
+                                               └──[exchange]─→ exchanged   (ABSORBING)
+
+
+  Legend:  ──→  = action causing state transition
+           (ABSORBING) = terminal state, no way to leave</div>
+
+<h3>Key DTG Concepts</h3>
+<table style="max-width:900px">
+<tr><th>Concept</th><th>Definition</th><th>Example</th></tr>
+<tr><td><strong>Absorbing state</strong></td><td>Once entered, cannot leave. No outgoing edges exist.</td><td><code>cancelled</code>, <code>returned</code> &mdash; you cannot un-cancel an order</td></tr>
+<tr><td><strong>Self-loop</strong></td><td>Action that transitions a variable to its current value (no net change).</td><td><code>modify_items</code> on a pending order: status stays <code>pending</code></td></tr>
+<tr><td><strong>Fork</strong></td><td>Two edges from the same node to different absorbing states. Can only take ONE.</td><td><code>return</code> OR <code>exchange</code> from <code>delivered</code> &mdash; mutually exclusive</td></tr>
+<tr><td><strong>Conditional transition</strong></td><td>Edge exists only when another fluent has a specific value.</td><td><code>toggle_data</code> only works when <code>airplane_mode = off</code></td></tr>
+<tr><td><strong>Cross-DTG side effect</strong></td><td>Action on one fluent causes a transition on a different fluent.</td><td><code>reboot_device</code> resets toggle states (cross-fluent cascade)</td></tr>
+<tr><td><strong>Counter fluent</strong></td><td>Numeric variable that only decreases (or only increases). Monotonic.</td><td>Gift card balance (decreases), PIN attempts remaining (decreases)</td></tr>
+</table>
+</div>
+
+<div class="concept" style="border-left-color:#e67e22">
+<h4>Why DTGs matter for benchmark design</h4>
+<p>DTGs expose the <em>topology</em> of a domain. A domain with only self-loops and no absorbing states (like modify-only operations) can never produce destructive interactions. A domain with forks to absorbing states creates mutual exclusion. A domain with cross-DTG side effects creates ordering chains. By analyzing DTGs, we can see exactly what interaction types a benchmark <em>can</em> produce &mdash; and what it structurally cannot.</p>
+</div>
+
+<!-- ===== SECTION 2: DTG Analysis Results ===== -->
+
+<h2>Section 2: DTG Analysis Results</h2>
+
+<!-- --- Retail (tau-bench) --- -->
+
+<div class="card">
+<h3>Retail (&tau;-bench) &mdash; 3 Fluents</h3>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">3</div><div class="stat-label">Fluents</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">3</div><div class="stat-label">Absorbing States</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2980b9">6</div><div class="stat-label">order_status Values</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e67e22">7</div><div class="stat-label">Missing Patterns</div></div>
+</div>
+
+<h4>Fluent 1: order_status &mdash; 6 values, 3 absorbing</h4>
+<div class="code">  Values:    pending, shipped, delivered, cancelled, returned, exchanged
+  Absorbing: cancelled, returned, exchanged
+
+  Transitions:
+    pending   ──[modify_items]───→ pending      (self-loop)
+    pending   ──[modify_address]─→ pending      (self-loop)
+    pending   ──[modify_payment]─→ pending      (self-loop)
+    pending   ──[cancel_order]───→ cancelled    (ABSORBING)
+    pending   ──[ship]───────────→ shipped      (system action, not user-triggered)
+    shipped   ──[deliver]────────→ delivered    (system action)
+    delivered ──[return_items]───→ returned     (ABSORBING)
+    delivered ──[exchange_items]─→ exchanged    (ABSORBING)
+
+  Fork: delivered → {returned, exchanged}  (mutually exclusive — NON_SERIALIZABLE)
+  No cycles. Strictly monotonic progression except self-loops at pending.</div>
+
+<h4>Fluent 2: user_address &mdash; 2 values</h4>
+<div class="code">  Values:    address_v1, address_v2
+  Transitions:
+    address_v1 ──[modify_user_address]──→ address_v2
+    address_v2 ──[modify_user_address]──→ address_v3  (unbounded, reversible)
+
+  No absorbing states. Fully ergodic.</div>
+
+<h4>Fluent 3: agent_knowledge &mdash; 4 values</h4>
+<div class="code">  Values:    unknown, has_user_id, has_order_details, has_product_details
+  Transitions:
+    unknown          ──[find_user_id]──→ has_user_id
+    has_user_id      ──[get_order]─────→ has_order_details
+    has_order_details──[get_product]───→ has_product_details
+
+  Monotonically increasing knowledge. Never consumed. (Reusable resource — not a real fluent for conflict analysis.)</div>
+
+<h4>Cross-Fluent Interactions</h4>
+<table style="max-width:900px">
+<tr><th>Interaction</th><th>Fluents Involved</th><th>Category</th><th>Explanation</th></tr>
+<tr><td>cancel + modify</td><td>order_status</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>cancel moves to absorbing state; modify needs pending</td></tr>
+<tr><td>return + exchange</td><td>order_status</td><td><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span></td><td>Fork from delivered to two absorbing states; both delete delivered</td></tr>
+<tr><td>modify + modify</td><td>order_status</td><td><span class="badge" style="background:#27ae60">SYNERGY</span></td><td>Self-loops at pending; both preserve the precondition</td></tr>
+</table>
+
+<h4>Missing Interaction Patterns (7)</h4>
+<table style="max-width:900px">
+<tr><th>#</th><th>Pattern</th><th>Why Missing</th></tr>
+<tr><td>1</td><td>Cancel + modify on same order (explicit)</td><td>No task pairs these goals</td></tr>
+<tr><td>2</td><td>Return + exchange on same order (explicit)</td><td>No task creates this fork conflict</td></tr>
+<tr><td>3</td><td>Resource consumption (shared payment/gift card)</td><td>No shared resource across orders</td></tr>
+<tr><td>4</td><td>Cascading effects (return voids warranty)</td><td>No cross-entity propagation</td></tr>
+<tr><td>5</td><td>User state change mid-execution</td><td>User state is static during task</td></tr>
+<tr><td>6</td><td>Multi-entity cancel chain</td><td>Orders are independent entities</td></tr>
+<tr><td>7</td><td>Counter fluent (balance depletion)</td><td>No numeric decreasing resources</td></tr>
+</table>
+</div>
+
+<!-- --- Airline (tau-bench) --- -->
+
+<div class="card">
+<h3>Airline (&tau;-bench) &mdash; 2 Fluents</h3>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">2</div><div class="stat-label">Fluents</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">1</div><div class="stat-label">Absorbing States</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#2980b9">3</div><div class="stat-label">reservation_status Values</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e67e22">4</div><div class="stat-label">Missing Patterns</div></div>
+</div>
+
+<h4>Fluent 1: reservation_status &mdash; 3 values, 1 absorbing</h4>
+<div class="code">  Values:    active, cancelled, completed
+  Absorbing: cancelled
+
+  Transitions:
+    active    ──[update_flights]─────→ active      (self-loop)
+    active    ──[update_passengers]──→ active      (self-loop)
+    active    ──[update_baggages]────→ active      (self-loop)
+    active    ──[cancel_reservation]─→ cancelled   (ABSORBING)
+    active    ──[complete]───────────→ completed   (system action, post-travel)
+
+  Single absorbing state. No fork (only one destructive exit).</div>
+
+<h4>Fluent 2: booking_status &mdash; 2 values</h4>
+<div class="code">  Values:    not_booked, booked
+  Transitions:
+    not_booked ──[book_reservation]──→ booked
+
+  One-way. No absorbing state (booked can be cancelled via reservation_status).
+  Cross-DTG dependency: book_reservation creates a new reservation_status=active.</div>
+
+<h4>Cross-Fluent Interactions</h4>
+<table style="max-width:700px">
+<tr><th>Interaction</th><th>Category</th><th>Explanation</th></tr>
+<tr><td>update + cancel (same reservation)</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>cancel absorbs; update needs active</td></tr>
+</table>
+
+<h4>Missing Interaction Patterns (4)</h4>
+<table style="max-width:900px">
+<tr><th>#</th><th>Pattern</th><th>Why Missing</th></tr>
+<tr><td>1</td><td>NON_SERIALIZABLE (mutual destruction)</td><td>Only one absorbing exit &mdash; no fork</td></tr>
+<tr><td>2</td><td>Resource consumption (shared miles/credits)</td><td>No shared numeric resource</td></tr>
+<tr><td>3</td><td>Cross-entity dependency</td><td>Reservations are independent entities</td></tr>
+<tr><td>4</td><td>Conditional transitions</td><td>All updates unconditionally succeed on active</td></tr>
+</table>
+</div>
+
+<!-- --- Telecom (tau2-bench) --- -->
+
+<div class="card">
+<h3>Telecom (&tau;2-bench) &mdash; 11 Fluents</h3>
+
+<div class="stats-grid">
+<div class="stat-box"><div class="stat-value" style="color:#2c3e50">11</div><div class="stat-label">Fluents</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e74c3c">0</div><div class="stat-label">Absorbing States</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#9b59b6">4</div><div class="stat-label">Cross-DTG Interactions</div></div>
+<div class="stat-box"><div class="stat-value" style="color:#e67e22">6</div><div class="stat-label">Missing Patterns</div></div>
+</div>
+
+<div class="concept" style="border-left-color:#9b59b6">
+<h4>Why telecom is structurally richer</h4>
+<p>Unlike retail and airline where goals operate on <em>different entities</em> (different orders, different reservations), telecom actions ALL operate on the <strong>SAME device</strong>. Every toggle, every setting change, every reboot affects the same shared state. This means virtually every pair of goals shares state &mdash; creating dense cross-DTG dependencies.</p>
+</div>
+
+<h4>Fluents (11 state variables on a single device)</h4>
+<table style="max-width:900px">
+<tr><th>Fluent</th><th>Values</th><th>Type</th></tr>
+<tr><td>airplane_mode</td><td>{on, off}</td><td>Binary toggle</td></tr>
+<tr><td>wifi</td><td>{on, off}</td><td>Binary toggle (conditional: airplane_mode=off)</td></tr>
+<tr><td>mobile_data</td><td>{on, off}</td><td>Binary toggle (conditional: airplane_mode=off)</td></tr>
+<tr><td>bluetooth</td><td>{on, off}</td><td>Binary toggle</td></tr>
+<tr><td>roaming</td><td>{on, off}</td><td>Binary toggle (conditional: airplane_mode=off)</td></tr>
+<tr><td>hotspot</td><td>{on, off}</td><td>Binary toggle (conditional: mobile_data=on)</td></tr>
+<tr><td>vpn</td><td>{on, off}</td><td>Binary toggle (conditional: wifi=on OR mobile_data=on)</td></tr>
+<tr><td>nfc</td><td>{on, off}</td><td>Binary toggle</td></tr>
+<tr><td>data_saver</td><td>{on, off}</td><td>Binary toggle</td></tr>
+<tr><td>apn_config</td><td>{default, custom_1, custom_2}</td><td>Ternary (conditional: mobile_data=on)</td></tr>
+<tr><td>device_power</td><td>{on, off}</td><td>Binary (reboot = off&rarr;on with side effects)</td></tr>
+</table>
+
+<h4>Conditional Transition Dependencies</h4>
+<div class="code">  airplane_mode
+       │
+       ├── blocks → wifi          (airplane_mode=on → wifi forced off)
+       ├── blocks → mobile_data   (airplane_mode=on → mobile_data forced off)
+       └── blocks → roaming       (airplane_mode=on → roaming forced off)
+
+  mobile_data
+       │
+       ├── blocks → hotspot       (mobile_data=off → hotspot forced off)
+       └── blocks → apn_config    (mobile_data=off → apn changes blocked)
+
+  wifi OR mobile_data
+       │
+       └── blocks → vpn           (both off → vpn cannot be on)
+
+  reboot (device_power off→on)
+       │
+       └── RESETS → wifi, bluetooth, hotspot, vpn to OFF
+                    (cross-DTG side effect — destroys prior configuration)</div>
+
+<h4>Cross-Fluent Interactions (4 identified)</h4>
+<table style="max-width:900px">
+<tr><th>Interaction</th><th>Category</th><th>Mechanism</th></tr>
+<tr><td>airplane_mode ON + toggle wifi</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>airplane_mode=on forces wifi=off; toggle_wifi needs airplane_mode=off</td></tr>
+<tr><td>airplane_mode ON + toggle mobile_data</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>Same mechanism: airplane_mode blocks mobile_data</td></tr>
+<tr><td>reboot + any toggle ON</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>Reboot resets toggles to OFF, destroying prior ON states</td></tr>
+<tr><td>mobile_data OFF + set APN</td><td><span class="badge" style="background:#e74c3c">DESTRUCTIVE</span></td><td>mobile_data=off blocks APN configuration changes</td></tr>
+</table>
+
+<h4>Missing Interaction Patterns (6)</h4>
+<table style="max-width:900px">
+<tr><th>#</th><th>Pattern</th><th>Why Missing</th></tr>
+<tr><td>1</td><td>NON_SERIALIZABLE (mutual destruction)</td><td>All toggles are reversible &mdash; no absorbing states</td></tr>
+<tr><td>2</td><td>DTG cycles requiring specific traversal order</td><td>All toggles are binary on/off &mdash; no multi-step chains</td></tr>
+<tr><td>3</td><td>Counter fluents (depleting resources)</td><td>No numeric monotonic variables</td></tr>
+<tr><td>4</td><td>Fork to absorbing states</td><td>No terminal states in telecom</td></tr>
+<tr><td>5</td><td>Cross-entity interactions</td><td>All actions on same device (rich but single-entity)</td></tr>
+<tr><td>6</td><td>Cascading deletes across entities</td><td>No multi-entity propagation</td></tr>
+</table>
+</div>
+
+<!-- ===== SECTION 3: 12 Hard Instance Designs ===== -->
+
+<h2>Section 3: 12 Hard Instance Designs</h2>
+
+<p>Each instance targets a specific gap identified by DTG analysis. These are designed to be <strong>structurally hard</strong> &mdash; the difficulty comes from the topology of the state space, not from ambiguous language or obscure domain knowledge.</p>
+
+<!-- hard_01 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> hard_01: Precondition Clobber <span class="difficulty diff-medium">MEDIUM</span></div>
+<p><strong>Description:</strong> Cancel and modify the same pending order. Cancel destroys the precondition that modify needs.</p>
+<p><strong>User instruction:</strong> <em>"I need to cancel order #W1234 and also change its shipping address to 123 Main St."</em></p>
+<div class="code">Goal A: cancel_order(#W1234)
+  PRE:  order_pending(#W1234)
+  DEL:  order_pending(#W1234)
+  ADD:  order_cancelled(#W1234)
+
+Goal B: modify_order_address(#W1234, "123 Main St")
+  PRE:  order_pending(#W1234)
+  DEL:  —
+  ADD:  address_updated(#W1234)</div>
+<p><strong>DTG analysis:</strong> Both goals originate from the <code>pending</code> node. Goal A takes the edge to <code>cancelled</code> (absorbing). Goal B is a self-loop at <code>pending</code>. If A executes first, the state moves to <code>cancelled</code> and B's precondition <code>order_pending</code> is gone. The only valid ordering is B before A.</p>
+<p><strong>Correct ordering:</strong> B then A (modify first, then cancel). The agent must recognize that cancellation is irreversible.</p>
+</div>
+
+<!-- hard_02 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> hard_02: Mutual Destruction <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> Return and exchange the same delivered order. Both consume <code>order_delivered</code> and transition to different absorbing states.</p>
+<p><strong>User instruction:</strong> <em>"I want to return items A and B from order #W5678, and exchange item C from the same order."</em></p>
+<div class="code">Goal A: return_items(#W5678, [A, B])
+  PRE:  order_delivered(#W5678)
+  DEL:  order_delivered(#W5678)
+  ADD:  order_returned(#W5678)
+
+Goal B: exchange_items(#W5678, [C])
+  PRE:  order_delivered(#W5678)
+  DEL:  order_delivered(#W5678)
+  ADD:  order_exchanged(#W5678)</div>
+<p><strong>DTG analysis:</strong> This is the fork from <code>delivered</code>. Both edges lead to absorbing states (<code>returned</code>, <code>exchanged</code>). Both delete <code>order_delivered</code>. A before B: B fails. B before A: A fails. <strong>No valid serialization exists.</strong></p>
+<p><strong>Correct resolution:</strong> Semantic merge &mdash; combine into a single API call that processes all items (returns A,B and exchanges C simultaneously). The agent must detect the mutual exclusion and propose the merge.</p>
+</div>
+
+<!-- hard_03 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> hard_03: Resource Consumption <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> Two orders share the same gift card with $100 balance. Order A costs $70 and Order B costs $50. Total exceeds balance.</p>
+<p><strong>User instruction:</strong> <em>"Apply gift card GC-9999 (balance: $100) to order #W1111 ($70 total) and order #W2222 ($50 total)."</em></p>
+<div class="code">Goal A: apply_gift_card(GC-9999, #W1111, $70)
+  PRE:  gift_card_balance(GC-9999) >= 70
+  DEL:  gift_card_balance(GC-9999, $100)
+  ADD:  gift_card_balance(GC-9999, $30)
+
+Goal B: apply_gift_card(GC-9999, #W2222, $50)
+  PRE:  gift_card_balance(GC-9999) >= 50
+  DEL:  gift_card_balance(GC-9999, $100)
+  ADD:  gift_card_balance(GC-9999, $50)
+
+Counter fluent: gift_card_balance ∈ {$0, $1, ..., $100} (monotonically decreasing)</div>
+<p><strong>DTG analysis:</strong> The gift card balance is a <strong>counter fluent</strong> &mdash; it only decreases. A before B: balance becomes $30, B needs $50 &rarr; B fails. B before A: balance becomes $50, A needs $70 &rarr; A fails. Both orderings fail because combined demand ($120) exceeds supply ($100).</p>
+<p><strong>Correct resolution:</strong> Agent must detect insufficient shared resource and ask user to prioritize which order gets the gift card, or split the payment method.</p>
+</div>
+
+<!-- hard_04 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> hard_04: User Invalidation <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> User requests a modification, then mid-execution changes their mind and wants to cancel instead. The modification's precondition becomes irrelevant.</p>
+<p><strong>User instruction:</strong> <em>"Change order #W3456 to express shipping... actually wait, just cancel it instead."</em></p>
+<div class="code">Goal A (initial): modify_order_shipping(#W3456, "express")
+  PRE:  order_pending(#W3456)
+  DEL:  —
+  ADD:  shipping_updated(#W3456)
+
+Goal B (supersedes A): cancel_order(#W3456)
+  PRE:  order_pending(#W3456)
+  DEL:  order_pending(#W3456)
+  ADD:  order_cancelled(#W3456)
+
+User intent change: Goal A is INVALIDATED by Goal B.</div>
+<p><strong>DTG analysis:</strong> Goal B renders Goal A pointless &mdash; why modify shipping on an order that will be cancelled? This is not just an ordering problem but a <strong>goal revision</strong> problem. The agent must recognize that the user's second statement supersedes the first.</p>
+<p><strong>Correct resolution:</strong> Abandon Goal A entirely; execute only Goal B. The agent must track user intent changes over the conversation.</p>
+</div>
+
+<!-- hard_05 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#d35400">TRANSITIVE_DESTRUCTIVE</span> hard_05: Cascading Delete <span class="difficulty diff-vhard">VERY HARD</span></div>
+<p><strong>Description:</strong> Returning an order triggers warranty voiding, which prevents a separate warranty claim on a related product.</p>
+<p><strong>User instruction:</strong> <em>"Return order #W7890 (laptop) and file a warranty claim for the charger that came with it."</em></p>
+<div class="code">Goal A: return_items(#W7890, [laptop])
+  PRE:  order_delivered(#W7890)
+  DEL:  order_delivered(#W7890), warranty_active(laptop)    ← side effect!
+  ADD:  order_returned(#W7890)
+
+Goal B: file_warranty_claim(charger, warranty=laptop_bundle)
+  PRE:  warranty_active(laptop)
+  DEL:  —
+  ADD:  warranty_claim_filed(charger)
+
+Transitive chain: return(laptop) → DELETES warranty_active(laptop)
+                  → warranty_claim(charger) NEEDS warranty_active(laptop) → FAILS</div>
+<p><strong>DTG analysis:</strong> This is a <strong>cross-DTG side effect</strong>. The return action on order_status also causes a transition on warranty_status (active &rarr; voided). The agent must trace the causal chain: return order &rarr; void warranty &rarr; claim fails. The dependency is transitive and not visible from the order_status DTG alone.</p>
+<p><strong>Correct ordering:</strong> B before A (file warranty claim first, then return). But the agent must first discover the cross-DTG dependency.</p>
+</div>
+
+<!-- hard_06 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> hard_06: Mutual Exclusion <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> Apply both free shipping promotion and express shipping upgrade to the same order. These are mutually exclusive shipping methods.</p>
+<p><strong>User instruction:</strong> <em>"Apply my free shipping coupon FREESHIP to order #W4444 and also upgrade it to express delivery."</em></p>
+<div class="code">Goal A: apply_coupon(#W4444, FREESHIP)
+  PRE:  order_pending(#W4444), shipping_method(#W4444, standard)
+  DEL:  shipping_method(#W4444, standard)
+  ADD:  shipping_method(#W4444, free)
+
+Goal B: upgrade_shipping(#W4444, express)
+  PRE:  order_pending(#W4444), shipping_method(#W4444, standard)
+  DEL:  shipping_method(#W4444, standard)
+  ADD:  shipping_method(#W4444, express)
+
+Both need shipping_method=standard, both delete it.</div>
+<p><strong>DTG analysis:</strong> The shipping_method fluent has a fork from <code>standard</code> to both <code>free</code> and <code>express</code>. Both transitions delete the source value. A before B: shipping becomes <code>free</code>, B needs <code>standard</code> &rarr; fails. B before A: shipping becomes <code>express</code>, A needs <code>standard</code> &rarr; fails. <strong>No valid serialization.</strong></p>
+<p><strong>Correct resolution:</strong> Inform the user that free shipping and express shipping are mutually exclusive. Ask which one they prefer.</p>
+</div>
+
+<!-- hard_07 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> hard_07: Multi-step DTG Chain <span class="difficulty diff-medium">MEDIUM</span></div>
+<p><strong>Description:</strong> User wants to upgrade loyalty tier from Silver to Gold to Platinum. Each step requires the previous tier as a precondition.</p>
+<p><strong>User instruction:</strong> <em>"I want to upgrade my account to Platinum tier."</em></p>
+<div class="code">Goal A: upgrade_tier(user, Silver → Gold)
+  PRE:  tier(user, Silver), points(user) >= 5000
+  DEL:  tier(user, Silver)
+  ADD:  tier(user, Gold)
+
+Goal B: upgrade_tier(user, Gold → Platinum)
+  PRE:  tier(user, Gold), points(user) >= 10000
+  DEL:  tier(user, Gold)
+  ADD:  tier(user, Platinum)
+
+DTG chain: Silver ──[A]──→ Gold ──[B]──→ Platinum</div>
+<p><strong>DTG analysis:</strong> The tier fluent has a linear chain. Goal B requires the <em>output</em> of Goal A as its precondition. B before A: tier is Silver, B needs Gold &rarr; fails. Only A then B works. This is a <strong>causal link</strong> &mdash; A produces what B needs.</p>
+<p><strong>Correct ordering:</strong> A then B (strict sequential). The agent must decompose "upgrade to Platinum" into the two-step chain.</p>
+</div>
+
+<!-- hard_08 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#8e44ad">REQUIRES_OBSERVATION</span> hard_08: Conditional Goal <span class="difficulty diff-medium">MEDIUM</span></div>
+<p><strong>Description:</strong> User wants to undo an order, but the action depends on the order's current status: if shipped/delivered, return it; if pending, cancel it.</p>
+<p><strong>User instruction:</strong> <em>"I don't want order #W5555 anymore. Get rid of it."</em></p>
+<div class="code">IF order_status(#W5555) == pending:
+    Goal: cancel_order(#W5555)
+      PRE: order_pending(#W5555)
+
+ELIF order_status(#W5555) == delivered:
+    Goal: return_items(#W5555, all)
+      PRE: order_delivered(#W5555)
+
+ELSE (shipped):
+    Goal: IMPOSSIBLE — cannot cancel shipped, cannot return undelivered
+      → Must inform user to wait for delivery</div>
+<p><strong>DTG analysis:</strong> The correct action depends on the <em>current node</em> in the DTG. The agent must first observe order_status to determine which edge is available. From <code>pending</code>, the cancel edge exists. From <code>delivered</code>, the return edge exists. From <code>shipped</code>, no user-available edge exists &mdash; the agent is stuck and must communicate this.</p>
+<p><strong>Correct resolution:</strong> Observe first, then branch. This tests whether the agent can handle <strong>partial observability</strong> and status-dependent goal selection.</p>
+</div>
+
+<!-- hard_09 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#2c3e50">NON_SERIALIZABLE</span> hard_09: Dead-End Recovery <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> Fix a device's connectivity without performing a factory reset (user wants to preserve data). The fix requires toggling airplane mode, but this destroys the current custom APN configuration.</p>
+<p><strong>User instruction:</strong> <em>"My phone can't connect to the network. Fix it without factory reset. I have a custom APN I need to keep."</em></p>
+<div class="code">Goal A: fix_connectivity(device)
+  Method: toggle airplane_mode ON then OFF (network reset)
+  PRE:  airplane_mode(off)
+  EFFECT: forces mobile_data=off → destroys custom APN context
+
+Goal B: preserve_apn(device, custom_1)
+  PRE:  apn_config(device, custom_1), mobile_data(on)
+  Needs mobile_data=on to verify APN is active
+
+Cross-DTG conflict:
+  airplane_mode ON → mobile_data forced OFF → APN config inaccessible
+  Restoring mobile_data ON → APN may reset to default</div>
+<p><strong>DTG analysis:</strong> Fixing connectivity requires traversing the airplane_mode DTG (off &rarr; on &rarr; off), but this causes a <strong>cross-DTG side effect</strong> that destroys mobile_data state, which in turn makes apn_config inaccessible. The agent cannot fix connectivity without risking APN loss. Neither "fix first" nor "preserve first" fully works.</p>
+<p><strong>Correct resolution:</strong> Record the custom APN settings before toggling airplane mode, then restore them after. This requires a <strong>save-restore</strong> pattern that goes beyond simple action ordering.</p>
+</div>
+
+<!-- hard_10 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#e74c3c">DIRECT_DESTRUCTIVE</span> hard_10: Cross-DTG Sync Chain <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> Enable roaming with a custom APN while airplane mode is on. Requires a specific sequence across three fluent DTGs.</p>
+<p><strong>User instruction:</strong> <em>"Turn off airplane mode, enable roaming, and set APN to custom_1."</em></p>
+<div class="code">Goal A: set_airplane_mode(device, off)
+  PRE:  airplane_mode(on)
+  DEL:  airplane_mode(on)
+  ADD:  airplane_mode(off)
+  SIDE: unblocks wifi, mobile_data, roaming
+
+Goal B: enable_roaming(device)
+  PRE:  airplane_mode(off), roaming(off)
+  DEL:  roaming(off)
+  ADD:  roaming(on)
+
+Goal C: set_apn(device, custom_1)
+  PRE:  mobile_data(on), apn_config(default)
+  DEL:  apn_config(default)
+  ADD:  apn_config(custom_1)
+
+Implicit sub-goal: enable_mobile_data(device)
+  PRE:  airplane_mode(off)
+  Needed before Goal C can execute
+
+Ordering chain: A → enable_mobile_data → C, and A → B (parallel after A)</div>
+<p><strong>DTG analysis:</strong> Three DTGs are connected by conditional transitions. Goal B and Goal C both depend on Goal A (airplane_mode must be off first). Goal C additionally requires mobile_data=on, which is a separate action. The agent must discover the <strong>implicit sub-goal</strong> (enable mobile data) that is not in the user's request.</p>
+<p><strong>Correct ordering:</strong> A first, then enable_mobile_data, then B and C can proceed in parallel. The agent must synthesize the missing intermediate step.</p>
+</div>
+
+<!-- hard_11 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#d35400">RESOURCE_CONSUMPTION</span> hard_11: Counter Fluent with Lockout <span class="difficulty diff-hard">HARD</span></div>
+<p><strong>Description:</strong> User needs to verify identity via PIN, but has only 1 attempt remaining before account lockout. Two operations both require PIN verification.</p>
+<p><strong>User instruction:</strong> <em>"I need to change my account password and also update my payment method. Both require PIN verification."</em></p>
+<div class="code">State: pin_attempts_remaining(user) = 1
+
+Goal A: change_password(user)
+  PRE:  pin_verified(user) OR pin_attempts_remaining(user) >= 1
+  If PIN wrong: pin_attempts_remaining -= 1
+  If PIN right: pin_verified(user) = true
+
+Goal B: update_payment(user)
+  PRE:  pin_verified(user) OR pin_attempts_remaining(user) >= 1
+  If PIN wrong: pin_attempts_remaining -= 1
+  If PIN right: pin_verified(user) = true
+
+Counter fluent: pin_attempts_remaining ∈ {0, 1, 2, 3}
+  At 0: account_locked(user) = true → BOTH goals impossible</div>
+<p><strong>DTG analysis:</strong> The PIN attempts counter is a <strong>strictly decreasing counter fluent</strong>. Each failed attempt is irreversible. With only 1 attempt left, the agent must verify the PIN ONCE (correctly) and then use the verified session for both operations. If the agent naively tries to verify separately for each goal, a single failure locks the account permanently.</p>
+<p><strong>Correct resolution:</strong> Verify PIN once, then execute both goals under the verified session. The agent must recognize the shared resource constraint and batch the verification.</p>
+</div>
+
+<!-- hard_12 -->
+<div class="example">
+<div class="example-title"><span class="badge" style="background:#7f8c8d">MIXED</span> hard_12: Compound Same-Entity Operations <span class="difficulty diff-mhard">MEDIUM-HARD</span></div>
+<p><strong>Description:</strong> Three modifications plus a cancellation on the same order. The modifications are SYNERGY with each other but all are DESTRUCTIVE with the cancel.</p>
+<p><strong>User instruction:</strong> <em>"For order #W9999: change the address to 456 Oak Ave, change payment to Visa ending 1234, add gift wrapping, and then cancel the whole order."</em></p>
+<div class="code">Goal A: modify_address(#W9999, "456 Oak Ave")
+  PRE: order_pending(#W9999)   DEL: —   ADD: address_updated
+
+Goal B: modify_payment(#W9999, Visa-1234)
+  PRE: order_pending(#W9999)   DEL: —   ADD: payment_updated
+
+Goal C: add_gift_wrap(#W9999)
+  PRE: order_pending(#W9999)   DEL: —   ADD: gift_wrap_added
+
+Goal D: cancel_order(#W9999)
+  PRE: order_pending(#W9999)   DEL: order_pending(#W9999)   ADD: order_cancelled
+
+Interaction matrix:
+  A-B: SYNERGY (both self-loop at pending)
+  A-C: SYNERGY
+  B-C: SYNERGY
+  A-D: DESTRUCTIVE (D deletes A's precondition)
+  B-D: DESTRUCTIVE (D deletes B's precondition)
+  C-D: DESTRUCTIVE (D deletes C's precondition)</div>
+<p><strong>DTG analysis:</strong> Goals A, B, C are all self-loops at <code>pending</code> (SYNERGY &mdash; any order works). Goal D is the absorbing transition to <code>cancelled</code>. All three modifications are DESTRUCTIVE with the cancel. But the real insight: if the user ultimately wants to cancel, why modify at all? The agent must reason about <strong>goal utility</strong> &mdash; the modifications are pointless if cancellation follows.</p>
+<p><strong>Correct resolution:</strong> Ask the user whether they really want to modify before cancelling (the modifications would be wasted). If yes: A, B, C (any order), then D last. Likely: just D.</p>
+</div>
+
+<!-- ===== SECTION 4: Gap Analysis ===== -->
+
+<h2>Section 4: Gap Analysis</h2>
+
+<div class="card">
+<p>Each cell shows whether the benchmark <em>currently tests</em> that interaction pattern. <span style="color:#27ae60;font-weight:bold">HAS</span> = at least one task exhibits the pattern. <span style="color:#e74c3c;font-weight:bold">MISSING</span> = no task tests it.</p>
+
+<table>
+<tr>
+<th>Interaction Pattern</th>
+<th>&tau;-bench Retail</th>
+<th>&tau;-bench Airline</th>
+<th>&tau;2-bench Telecom</th>
+<th>Hard Instance(s)</th>
+</tr>
+<tr>
+<td>INDEPENDENT (different entities)</td>
+<td style="color:#27ae60;font-weight:bold">HAS (85.7%)</td>
+<td style="color:#27ae60;font-weight:bold">HAS (73.8%)</td>
+<td style="color:#27ae60;font-weight:bold">HAS</td>
+<td>&mdash;</td>
+</tr>
+<tr>
+<td>SYNERGY (shared precondition, not consumed)</td>
+<td style="color:#27ae60;font-weight:bold">HAS (13.3%)</td>
+<td style="color:#27ae60;font-weight:bold">HAS (23.8%)</td>
+<td style="color:#27ae60;font-weight:bold">HAS</td>
+<td>&mdash;</td>
+</tr>
+<tr>
+<td>DIRECT_DESTRUCTIVE (one-way clobber)</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#27ae60;font-weight:bold">HAS (2.4%)</td>
+<td style="color:#27ae60;font-weight:bold">HAS</td>
+<td>hard_01, hard_04, hard_07, hard_10</td>
+</tr>
+<tr>
+<td>NON_SERIALIZABLE (mutual destruction)</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING*</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_02, hard_06, hard_09</td>
+</tr>
+<tr>
+<td>Resource consumption (counter fluent)</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_03, hard_11</td>
+</tr>
+<tr>
+<td>Cascading / transitive effects</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_05</td>
+</tr>
+<tr>
+<td>User intent change / goal revision</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_04</td>
+</tr>
+<tr>
+<td>Conditional goal (observe-then-act)</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_08</td>
+</tr>
+<tr>
+<td>Cross-DTG side effects</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#27ae60;font-weight:bold">HAS (implicit)</td>
+<td>hard_05, hard_09, hard_10</td>
+</tr>
+<tr>
+<td>Mixed category (SYNERGY + DESTRUCTIVE)</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td style="color:#e74c3c;font-weight:bold">MISSING</td>
+<td>hard_12</td>
+</tr>
+</table>
+
+<p style="font-size:.82em;color:#666">* Retail has 1 NON_SERIALIZABLE pair (double return, Task #13) but it is an artifact of the gold solution splitting one return into two calls, not a deliberate design.</p>
+</div>
+
+<!-- ===== SECTION 5: Key Findings ===== -->
+
+<h2>Section 5: Key Findings</h2>
+
+<div class="card" style="border-left:4px solid #2980b9">
+<ol>
+<li><strong>Current benchmarks avoid hard interactions by design.</strong> &tau;-bench retail is 85.7% INDEPENDENT, airline is 73.8% INDEPENDENT. Tasks are constructed so that goals operate on different entities, avoiding any need for conflict reasoning. The hardest interactions (NON_SERIALIZABLE, resource consumption, cascading effects) are entirely absent.</li>
+
+<li><strong>DTG analysis reveals rich structure that benchmarks don't exploit.</strong> The retail domain's order_status DTG has 3 absorbing states, a fork, and multiple self-loops &mdash; the structural ingredients for DESTRUCTIVE and NON_SERIALIZABLE interactions. Yet no task actually creates these conflicts. The structure is there; the tasks don't use it.</li>
+
+<li><strong>Absorbing states create non-ergodic actions &mdash; mistakes can't be undone.</strong> Once an order is cancelled or returned, there is no edge back. This is fundamentally different from Blocksworld, where every action is reversible (<code>stack</code>/<code>unstack</code>). Absorbing states make conflict detection critical: executing the wrong action first permanently destroys the ability to achieve other goals.</li>
+
+<li><strong>Cross-DTG dependencies create ordering chains that require planning.</strong> In telecom, toggling airplane mode cascades through wifi, mobile_data, roaming, hotspot, vpn, and APN configuration. An agent must understand the causal graph across fluents to find a valid execution order. This is the planning equivalent of understanding transitive dependencies in a build system.</li>
+
+<li><strong>Counter fluents and resource consumption add a dimension that binary fluents miss.</strong> Gift card balances, PIN attempts, and API rate limits are monotonically decreasing counters. Unlike binary toggles (on/off), they cannot be restored. This creates resource conflicts that are invisible to boolean state analysis but critical for real-world agent behavior.</li>
+
+<li><strong>The 12 hard instances cover all identified gaps.</strong> Each instance targets a specific missing interaction pattern, with difficulty calibrated from MEDIUM (single-pair ordering) to VERY HARD (transitive cross-DTG cascading effects). Together, they form a comprehensive supplement to the existing benchmarks.</li>
+</ol>
+</div>
+
+<div class="concept" style="border-left-color:#e74c3c">
+<h4>Bottom line</h4>
+<p>DTG analysis is a <em>principled</em> method for benchmark gap analysis. Instead of guessing what scenarios are hard, we enumerate the state space topology, identify which structural features (absorbing states, forks, cross-DTG edges, counters) create hard interactions, and verify whether existing tasks exercise them. For &tau;-bench and &tau;2-bench, the answer is clear: the domain structure supports hard interactions, but the task design systematically avoids them.</p>
+</div>
+
+<p style="color:#888;font-size:.85em;margin-top:30px">DTG formalism: Helmert (2006), "The Fast Downward Planning System." Subgoal interaction taxonomy: Korf (1987), Barrett &amp; Weld (1994). Benchmark domains: &tau;-bench (Yao et al. 2024), &tau;2-bench (Fan et al. 2025).</p>
+
+</div></body></html>
